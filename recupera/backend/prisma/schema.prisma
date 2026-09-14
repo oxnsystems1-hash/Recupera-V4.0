@@ -1,0 +1,71 @@
+// Schema multi-tenant da Recupera.
+// Regra de ouro: nenhuma tabela do núcleo tem coluna fixa de um único setor.
+// A sensibilidade de dado e o comportamento do sistema são resolvidos pelo
+// campo `segmento` do tenant (ver /docs/especificacao-seguranca-lgpd.md).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  ATENDENTE
+  READ_ONLY
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  nome      String
+  // Resolve dinamicamente a sensibilidade de dado e o comportamento do
+  // agente de IA. Nunca criar tabela separada por setor nem coluna fixa
+  // (ex.: "prontuario") — ver Referência Rápida 1 do Guia Mestre.
+  segmento  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users    User[]
+  clientes Cliente[]
+
+  @@map("tenants")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  role         Role     @default(ATENDENTE)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Login busca por e-mail antes de o tenant ser conhecido (fluxo de auth é
+  // a única exceção documentada ao acesso sempre-escopado-por-tenant).
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// Entidade de exemplo, genérica em todos os segmentos, para validar o
+// isolamento de tenant (Dia 2). Nenhum campo específico de setor aqui.
+model Cliente {
+  id        String   @id @default(uuid())
+  tenantId  String
+  nome      String
+  telefone  String
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("clientes")
+}
