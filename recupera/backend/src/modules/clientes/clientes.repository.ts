@@ -30,4 +30,11 @@ export const clientesRepository = {
     // Prisma, que exige tenantId/tenant em tempo de compilação.
     return prisma.cliente.create({ data: data as Prisma.ClienteUncheckedCreateInput });
   },
+
+  // tenantId é injetado no where pela extensão; se o cliente pertencer a
+  // outro tenant, o Prisma lança P2025 (ver lib/prismaErrors.ts) — tratado
+  // como 404 no controller, nunca 403.
+  remove(id: string) {
+    return prisma.cliente.delete({ where: { id } });
+  },
 };

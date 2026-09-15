@@ -24,6 +24,8 @@ advocacia, imobiliárias, autoescolas, pet shops, consultorias).
 - `/docs/guia-mestre-v4.pdf` — Guia Mestre v4 (fonte deste plano de 15 dias).
 - `/docs/resultado-teste-isolamento-dia2.md` — resultado documentado do
   teste obrigatório de isolamento entre tenants.
+- `/docs/resultado-teste-rbac-dia3.md` — resultado documentado do teste
+  obrigatório de escalação de privilégio (RBAC).
 
 ## Regra de ouro
 
@@ -36,4 +38,7 @@ repositório são 100% fictícios.
 - [x] Dia 1 — Repositório estruturado, documentos normativos salvos em `/docs`.
 - [x] Dia 2 — Estrutura base de multi-tenancy implementada e testada
       (`/recupera/backend`); ver `/docs/resultado-teste-isolamento-dia2.md`.
-- [ ] Dia 3 — Autenticação e RBAC completos (matriz de permissões).
+- [x] Dia 3 — Autenticação (bcrypt, JWT 8h/refresh 30d, MFA/TOTP para
+      Owner/Admin, rate limiting) e RBAC completos, testados; ver
+      `/docs/resultado-teste-rbac-dia3.md`.
+- [ ] Dia 4 — Storage privado e política de retenção.

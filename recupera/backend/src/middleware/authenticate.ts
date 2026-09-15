@@ -2,12 +2,9 @@ import { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { runWithAuthContext } from '../lib/tenantContext';
+import { AccessTokenPayload } from '../lib/tokens';
 
-export interface JwtPayload {
-  tenantId: string;
-  userId: string;
-  role: string;
-}
+export type JwtPayload = AccessTokenPayload;
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -36,6 +33,11 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
   let payload: JwtPayload;
   try {
     payload = jwt.verify(token, env.jwtSecret) as JwtPayload;
+    if (payload.type !== 'access') {
+      // Evita confusão de token: um token de setup/challenge de MFA não
+      // pode ser reaproveitado como sessão autenticada.
+      throw new Error('Tipo de token inesperado.');
+    }
   } catch {
     res.status(401).json({ error: 'Token de autenticação inválido ou expirado.' });
     return;

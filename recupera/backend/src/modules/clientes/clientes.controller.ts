@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { clientesRepository } from './clientes.repository';
+import { isRecordNotFoundError } from '../../lib/prismaErrors';
 
 export async function listClientes(req: Request, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q : undefined;
@@ -25,4 +26,17 @@ export async function createCliente(req: Request, res: Response): Promise<void> 
   }
   const cliente = await clientesRepository.create({ nome, telefone, email });
   res.status(201).json({ cliente });
+}
+
+export async function deleteCliente(req: Request, res: Response): Promise<void> {
+  try {
+    await clientesRepository.remove(req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    if (isRecordNotFoundError(error)) {
+      res.status(404).json({ error: 'Cliente não encontrado.' });
+      return;
+    }
+    throw error;
+  }
 }

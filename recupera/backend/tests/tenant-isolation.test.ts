@@ -63,7 +63,7 @@ describe('Isolamento de tenant', () => {
       .send({ email: 'usuaria@tenant-a.ficticio.com', senha: SENHA });
 
     expect(loginResponse.status).toBe(200);
-    tokenTenantA = loginResponse.body.token;
+    tokenTenantA = loginResponse.body.accessToken;
   });
 
   afterAll(async () => {

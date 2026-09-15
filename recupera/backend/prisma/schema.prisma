@@ -29,8 +29,9 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users    User[]
-  clientes Cliente[]
+  users         User[]
+  clientes      Cliente[]
+  refreshTokens RefreshToken[]
 
   @@map("tenants")
 }
@@ -41,16 +42,46 @@ model User {
   email        String
   passwordHash String
   role         Role     @default(ATENDENTE)
+  // Desativação lógica (Dia 3): usuário inativo não consegue mais logar.
+  active       Boolean  @default(true)
+  // MFA/TOTP — obrigatório para OWNER e ADMIN (ver Prompt 1.3). O segredo
+  // nunca é gravado em texto puro: sempre passa por lib/crypto.ts
+  // (AES-256-GCM) antes de chegar ao banco.
+  mfaSecret    String?
+  mfaEnabled   Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  refreshTokens RefreshToken[]
 
   // Login busca por e-mail antes de o tenant ser conhecido (fluxo de auth é
   // a única exceção documentada ao acesso sempre-escopado-por-tenant).
   @@unique([tenantId, email])
   @@index([tenantId])
   @@map("users")
+}
+
+// Sessões de refresh (Dia 3): tokens opacos, guardados só como hash SHA-256
+// (nunca em texto puro — mesma régua de um "secret"), para permitir
+// invalidação real no logout. Manipulado exclusivamente via o Prisma Client
+// "cru" (prismaUnscoped) pelo módulo de auth: refresh/logout acontecem antes
+// de haver um tenant autenticado no contexto da requisição.
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tenantId  String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 // Entidade de exemplo, genérica em todos os segmentos, para validar o

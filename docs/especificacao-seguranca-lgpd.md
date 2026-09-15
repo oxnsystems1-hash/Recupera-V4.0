@@ -64,9 +64,25 @@ a partir do campo `Tenant.segmento` — nunca por tabela ou coluna dedicada a um
 | Atendente | Inbox, criar/editar agendamentos | Configurações, usuários, dados financeiros, exclusão de clientes |
 | Read Only | Visualizar agendamentos e conversas | Editar qualquer coisa; configurações; dados sensíveis |
 
-RBAC completo é implementado no Dia 3 (Módulo 1). Neste repositório, o modelo `User.role`
-já existe com os quatro papéis acima, mas a matriz de permissões ainda não está aplicada
-em todas as rotas.
+RBAC aplicado (Dia 3): `middleware/requireRole.ts`, sempre depois de `authenticate` e antes do
+controller (`autenticado → tenant correto → papel autorizado → executar`). Recusa é sempre
+**403** (nunca 404) quando o dado já é visível no mesmo tenant — 404 fica reservado para
+esconder existência entre tenants (regra do Dia 2), não para negar uma ação por papel.
+
+## Autenticação (Dia 3 / Prompt 1.3)
+
+- Senha: bcrypt, custo 12 (`BCRYPT_COST` em `config/security.ts`).
+- Sessão: access token JWT de 8h (`type: "access"`, único aceito por `authenticate`) + refresh
+  token opaco de 30 dias, guardado só como hash SHA-256 no banco (nunca em texto puro).
+- Refresh token é rotacionado a cada uso (`POST /auth/refresh`); logout (`POST /auth/logout`)
+  revoga o refresh token no banco — invalidação real da sessão de longa duração.
+- MFA/TOTP **obrigatório** para Owner e Admin: login desses papéis nunca entrega sessão direto,
+  sempre um `setupToken` (primeira vez) ou `challengeToken` (já configurado), resolvido em
+  `/auth/mfa/setup` + `/auth/mfa/enable`, ou `/auth/mfa/verify`. Segredo TOTP criptografado em
+  repouso (AES-256-GCM, `lib/crypto.ts`) — nunca em texto puro no banco.
+- Rate limiting: 5 tentativas falhas / 15 min, por IP e por conta, em `/auth/login` e nos
+  endpoints que conferem código TOTP (`lib/rateLimiter.ts`, em memória — ver limitação de
+  escala documentada no README do backend).
 
 ## Regra de ouro
 
