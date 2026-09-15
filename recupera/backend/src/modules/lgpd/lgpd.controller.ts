@@ -288,6 +288,34 @@ export async function aprovarSolicitacao(req: Request, res: Response): Promise<v
     return;
   }
 
+  try {
+    await concluirAprovacao(solicitacao, res);
+  } catch (error) {
+    // Libera a reserva antes de propagar: sem isto, uma falha aqui (banco
+    // fora do ar, storage indisponível) deixaria a solicitação com
+    // `aprovadoEm` preenchido e status ainda PENDENTE — e o CAS acima
+    // exige `aprovadoEm: null`. Toda retentativa devolveria 409 e o pedido
+    // de exclusão do titular ficaria travado para sempre, em silêncio.
+    await prisma.solicitacaoLgpd
+      .updateMany({
+        where: { id: solicitacao.id, status: 'PENDENTE' },
+        data: { aprovadoPorId: null, aprovadoEm: null },
+      })
+      .catch((falhaAoLiberar) => {
+        console.error('Falha ao liberar reserva de aprovação LGPD:', falhaAoLiberar);
+      });
+    throw error;
+  }
+}
+
+/**
+ * Decide e executa o desfecho da aprovação. Separado de `aprovarSolicitacao`
+ * para que a liberação da reserva em caso de falha fique num único lugar.
+ */
+async function concluirAprovacao(
+  solicitacao: { id: string; clienteId: string },
+  res: Response,
+): Promise<void> {
   const obrigacao = await obrigacaoLegalPendente(solicitacao.clienteId);
 
   if (obrigacao) {

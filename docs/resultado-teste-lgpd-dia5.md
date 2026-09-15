@@ -95,6 +95,7 @@ qualquer correção. Cada um tem teste de regressão em `tests/lgpd-auditoria.te
 | E2 | Varredura excluía titular que ganhou **obrigação legal nova** depois do bloqueio | Grave | Revalida a obrigação antes de executar; se houver, reagenda e audita |
 | E3 | Token de confirmação voltava na resposta **também em produção** — o tenant confirmaria no lugar do titular | Grave | Em produção o token nunca volta; fora dela, sim (teste manual) |
 | E4 | Corrida na aprovação: duas aprovações simultâneas → segunda em 500 | Médio | Trava otimista por `aprovadoEm: null` (a primeira tentativa de trava, por `status`, não funcionava — pega pelo teste) |
+| E12 | A trava do E4 deixava a solicitação **travada para sempre** se a exclusão falhasse depois da reserva: status PENDENTE + `aprovadoEm` preenchido fazia toda retentativa devolver 409, bloqueando o direito do titular em silêncio | Grave | Reserva é liberada em caso de falha (`tests/lgpd-aprovacao-falha.test.ts`, verificado que falha sem a correção) |
 | E5 | `GET /lgpd/solicitacoes` devolvia `tokenConfirmacaoHash` | Médio | `select` explícito de campos |
 | E6 | Confirmar correção de titular já excluído → 500 | Médio | 410 tratado |
 | E7 | `?limite=-5` na auditoria invertia a consulta do Prisma | Médio | Clamp entre 1 e 500 |
