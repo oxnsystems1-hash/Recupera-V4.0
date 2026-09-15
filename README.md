@@ -26,6 +26,8 @@ advocacia, imobiliárias, autoescolas, pet shops, consultorias).
   teste obrigatório de isolamento entre tenants.
 - `/docs/resultado-teste-rbac-dia3.md` — resultado documentado do teste
   obrigatório de escalação de privilégio (RBAC).
+- `/docs/resultado-teste-storage-dia4.md` — resultado documentado do teste
+  obrigatório de storage privado e retenção.
 
 ## Regra de ouro
 
@@ -41,4 +43,8 @@ repositório são 100% fictícios.
 - [x] Dia 3 — Autenticação (bcrypt, JWT 8h/refresh 30d, MFA/TOTP para
       Owner/Admin, rate limiting) e RBAC completos, testados; ver
       `/docs/resultado-teste-rbac-dia3.md`.
-- [ ] Dia 4 — Storage privado e política de retenção.
+- [x] Dia 4 — Storage privado (upload com MIME real por bytes, URL
+      assinada de curta duração) e retenção (configurável por tenant,
+      piso decidido pelo segmento, exclusão real, bloqueio legal), testados;
+      ver `/docs/resultado-teste-storage-dia4.md`.
+- [ ] Dia 5 — Endpoints LGPD (portabilidade, correção, exclusão) e auditoria.

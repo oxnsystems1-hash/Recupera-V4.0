@@ -84,6 +84,24 @@ esconder existência entre tenants (regra do Dia 2), não para negar uma ação 
   endpoints que conferem código TOTP (`lib/rateLimiter.ts`, em memória — ver limitação de
   escala documentada no README do backend).
 
+## Storage privado e retenção (Dia 4 / Prompt 2.1)
+
+- **Upload**: MIME validado pelos bytes reais do arquivo (`lib/fileSignature.ts`), nunca pela
+  extensão nem pelo `Content-Type` enviado pelo cliente — ambos são forjáveis. Tipos permitidos:
+  `image/jpeg`, `image/png`, `image/webp`, `application/pdf`. Nome de arquivo sempre aleatório
+  (UUID + hash do conteúdo), nunca o nome original — path `tenantId/tipo/uuid-hash.ext`.
+- **Acesso**: só por URL assinada (HMAC, `lib/signedUrl.ts`), expiração máxima de 15 min (mais
+  curta ainda para segmentos de sensibilidade reforçada). Gerada apenas dentro de uma rota
+  autenticada e autorizada no tenant; cada geração fica registrada (`LogAcessoArquivo`).
+- **Retenção**: configurável por tenant (`Tenant.retencaoArquivosDias`), mas sempre com piso
+  mínimo decidido pelo segmento (nunca abaixo dele). Exclusão é sempre real — bytes removidos do
+  storage, não soft delete cosmético. Arquivo com `exclusaoBloqueada = true` (prazo legal, ex.
+  fiscal) nunca é apagado, nem manualmente nem pela varredura automática — o motivo fica
+  registrado em `motivoBloqueioExclusao`.
+- **Segmento decide automaticamente** a sensibilidade (`padrão` ou `reforçada`) — nunca decisão
+  manual caso a caso (`config/segmentos.ts`, mapa fechado dos 8 segmentos da Referência Rápida 1;
+  segmento desconhecido cai em `reforçada` por padrão, o lado mais seguro).
+
 ## Regra de ouro
 
 Nunca inserir dados reais de clientes, pacientes ou negócios em nenhuma sessão/ambiente.

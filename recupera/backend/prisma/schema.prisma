@@ -26,12 +26,18 @@ model Tenant {
   // agente de IA. Nunca criar tabela separada por setor nem coluna fixa
   // (ex.: "prontuario") — ver Referência Rápida 1 do Guia Mestre.
   segmento  String
+  // Retenção de arquivos configurável por tenant (Dia 4 / Prompt 2.1) — mas
+  // sempre com piso mínimo decidido pelo `segmento` (config/segmentos.ts),
+  // nunca abaixo do que a sensibilidade do segmento exige.
+  retencaoArquivosDias Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users         User[]
-  clientes      Cliente[]
-  refreshTokens RefreshToken[]
+  users             User[]
+  clientes          Cliente[]
+  refreshTokens     RefreshToken[]
+  arquivos          Arquivo[]
+  logsAcessoArquivo LogAcessoArquivo[]
 
   @@map("tenants")
 }
@@ -99,4 +105,53 @@ model Cliente {
 
   @@index([tenantId])
   @@map("clientes")
+}
+
+// Storage privado (Dia 4 / Prompt 2.1). O arquivo em si nunca fica num path
+// público: storagePath é interno (lib/storage) e só é exposto via URL
+// assinada de curta duração (lib/signedUrl.ts). `tipo` é uma categoria
+// genérica livre (ex.: "documento", "comprovante") — nunca nome de setor
+// fixo, mesma regra do núcleo do produto.
+model Arquivo {
+  id                     String    @id @default(uuid())
+  tenantId               String
+  tipo                   String
+  nomeOriginal           String
+  mimeType               String
+  tamanhoBytes           Int
+  // Path relativo dentro do storage privado: tenantId/tipo/uuid-hash.ext —
+  // nunca o nome original do arquivo (pode revelar informação sensível).
+  storagePath            String    @unique
+  // Calculado no upload a partir de config/segmentos.ts (retenção padrão do
+  // segmento do tenant, ou a configurada em Tenant.retencaoArquivosDias,
+  // nunca abaixo do piso mínimo do segmento).
+  retentionUntil         DateTime
+  // Prazo legal (ex.: fiscal) — enquanto true, nem a exclusão manual nem a
+  // varredura automática de retenção apagam o arquivo.
+  exclusaoBloqueada      Boolean   @default(false)
+  motivoBloqueioExclusao String?
+  createdAt              DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("arquivos")
+}
+
+// Log de cada geração de URL assinada (bullet "ACESSO" do Prompt 2.1) —
+// tabela só-insert, embrião do log de auditoria completo que o Dia 5
+// generaliza para toda ação sensível do sistema.
+model LogAcessoArquivo {
+  id        String   @id @default(uuid())
+  tenantId  String
+  arquivoId String
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([arquivoId])
+  @@map("logs_acesso_arquivo")
 }

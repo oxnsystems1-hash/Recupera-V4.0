@@ -5,13 +5,15 @@ import { errorHandler } from './middleware/errorHandler';
 import { authRouter } from './modules/auth/auth.routes';
 import { clientesRouter } from './modules/clientes/clientes.routes';
 import { usuariosRouter } from './modules/usuarios/usuarios.routes';
+import { arquivosRouter } from './modules/arquivos/arquivos.routes';
 
 export function createApp(): Express {
   const app = express();
 
   app.use(helmet());
-  // Sem upload de arquivo ainda (Dia 4): limite baixo é suficiente e reduz
-  // a superfície para payload de negação de serviço.
+  // Limite baixo para corpo JSON — reduz a superfície de payload de negação
+  // de serviço. Upload de arquivo (multipart, Dia 4) não passa por aqui:
+  // tem limite próprio em modules/arquivos/arquivos.controller.ts.
   app.use(express.json({ limit: '100kb' }));
   app.use(stripSpoofedTenantId);
 
@@ -19,6 +21,7 @@ export function createApp(): Express {
   app.use('/auth', authRouter);
   app.use('/clientes', clientesRouter);
   app.use('/usuarios', usuariosRouter);
+  app.use('/arquivos', arquivosRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Rota não encontrada.' });

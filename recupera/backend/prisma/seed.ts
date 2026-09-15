@@ -12,11 +12,17 @@ import { BCRYPT_COST } from '../src/config/security';
 async function main(): Promise<void> {
   const senhaHash = await bcrypt.hash('SenhaFicticia123!', BCRYPT_COST);
 
+  // Slugs canônicos de segmento — ver config/segmentos.ts (Dia 4): decidem
+  // automaticamente a sensibilidade (padrão/reforçada) usada em retenção
+  // de arquivo e TTL de URL assinada.
   const tenantA = await prisma.tenant.create({
-    data: { nome: 'Clínica Estética Aurora (fictícia)', segmento: 'clinica_estetica' },
+    data: {
+      nome: 'Clínica Estética Aurora (fictícia)',
+      segmento: 'clinicas_saude_odonto_estetica', // reforçada
+    },
   });
   const tenantB = await prisma.tenant.create({
-    data: { nome: 'Salão Vidas Boas (fictício)', segmento: 'salao' },
+    data: { nome: 'Salão Vidas Boas (fictício)', segmento: 'saloes_estudios_estetica' }, // padrão
   });
 
   for (const tenant of [tenantA, tenantB]) {

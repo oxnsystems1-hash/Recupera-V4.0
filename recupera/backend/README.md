@@ -10,7 +10,7 @@ na raiz do repositório.
 ## Setup local
 
 ```bash
-cp .env.example .env   # ajuste DATABASE_URL/JWT_SECRET/MFA_ENCRYPTION_KEY se necessário
+cp .env.example .env   # ajuste DATABASE_URL/JWT_SECRET/MFA_ENCRYPTION_KEY/FILE_URL_SECRET se necessário
 npm install
 npm run prisma:migrate  # cria o schema no banco de DATABASE_URL
 npm run prisma:generate
@@ -18,9 +18,11 @@ npx prisma db seed      # dados fictícios de exemplo (2 tenants, 4 papéis cada
 npm run dev
 ```
 
-`MFA_ENCRYPTION_KEY` precisa ser uma chave AES-256 de 32 bytes (64 caracteres
-hex) — gere uma nova por ambiente com
+`MFA_ENCRYPTION_KEY` e `FILE_URL_SECRET` precisam de uma chave forte por
+ambiente — gere com
 `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+`STORAGE_ROOT` (opcional) define onde o storage privado local grava os
+arquivos — padrão `./storage-privado`, já no `.gitignore`.
 
 ## Testes
 
@@ -29,11 +31,14 @@ npm test
 ```
 
 Sobe o schema no banco definido em `TEST_DATABASE_URL` (padrão:
-`recupera_test`) e roda a suíte sequencialmente (todos os arquivos
-compartilham o mesmo banco), incluindo os testes obrigatórios de
-isolamento entre tenants (`tests/tenant-isolation.test.ts`) e de escalação
-de privilégio (`tests/rbac-privilege-escalation.test.ts`), além da suíte
-de autenticação/MFA/sessão (`tests/auth-mfa-sessions.test.ts`).
+`recupera_test`) e o storage em `STORAGE_ROOT` (padrão: uma pasta temporária
+do SO), e roda a suíte sequencialmente (todos os arquivos compartilham o
+mesmo banco), incluindo os testes obrigatórios de isolamento entre tenants
+(`tests/tenant-isolation.test.ts`), de escalação de privilégio
+(`tests/rbac-privilege-escalation.test.ts`) e de storage/retenção
+(`tests/arquivos-storage.test.ts`), além das suítes de autenticação/MFA/sessão
+(`tests/auth-mfa-sessions.test.ts`) e de utilitários puros
+(`tests/fileSignature.test.ts`, `tests/segmentos.test.ts`).
 
 ## Isolamento de tenant (Dia 2)
 
@@ -100,3 +105,28 @@ CORS ainda não configurado (sem frontend consumindo a API ainda — entra
 junto com a Fase C, Dias 6–7); rate limiter em memória não sobrevive a
 restart nem escala horizontalmente (documentado acima); usuário desativado
 só perde acesso quando o access token expirar.
+
+## Storage privado e retenção (Dia 4)
+
+- `POST /arquivos` (multipart, campo `arquivo` + `tipo`) — Owner/Admin/
+  Atendente; Read Only não pode.
+- `GET /arquivos` — lista metadados (não os bytes) dos arquivos do tenant.
+- `GET /arquivos/:id/url` — gera URL assinada de curta duração (máx. 15min,
+  5min para segmentos reforçados); registra o acesso em `LogAcessoArquivo`.
+- `GET /arquivos/download?token=...` — único endpoint público do módulo; a
+  segurança é a assinatura HMAC + expiração do token, não um JWT.
+- `PATCH /arquivos/:id/bloqueio`, `DELETE /arquivos/:id` — Owner/Admin.
+- `src/lib/fileSignature.ts` — MIME real por número mágico dos bytes
+  (JPEG/PNG/WEBP/PDF), nunca por extensão ou `Content-Type` do cliente.
+- `src/lib/storage/localFilesystemStorage.ts` — storage privado local (MVP);
+  trocar por S3/GCS/R2 atrás da mesma interface é decisão do Dia 14.
+- `src/config/segmentos.ts` — o `segmento` do tenant decide automaticamente
+  a sensibilidade (`padrão`/`reforçada`), que por sua vez decide o piso
+  mínimo de retenção e o teto de TTL da URL assinada — nunca configuração
+  manual caso a caso.
+- `src/jobs/retentionSweep.ts` — exclusão real (bytes + registro) de
+  arquivo vencido, exceto com bloqueio legal ativo; roda a cada 1h via
+  `setInterval` em `server.ts` (cron externo é decisão do Dia 14).
+
+Resultado do teste obrigatório do Dia 4: ver
+`/docs/resultado-teste-storage-dia4.md`.

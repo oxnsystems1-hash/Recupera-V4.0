@@ -1,3 +1,5 @@
+import path from 'node:path';
+import os from 'node:os';
 import { defineConfig } from 'vitest/config';
 
 const TEST_DATABASE_URL =
@@ -17,6 +19,8 @@ export default defineConfig({
       DATABASE_URL: TEST_DATABASE_URL,
       JWT_SECRET: 'segredo-de-teste-nao-usar-em-producao',
       MFA_ENCRYPTION_KEY: '0'.repeat(63) + '1',
+      FILE_URL_SECRET: 'segredo-de-teste-para-url-assinada',
+      STORAGE_ROOT: path.join(os.tmpdir(), 'recupera-test-storage'),
     },
     hookTimeout: 30_000,
     testTimeout: 30_000,

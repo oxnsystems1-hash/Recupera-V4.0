@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from 'express';
+import multer from 'multer';
 
 interface BodyParserSyntaxError extends SyntaxError {
   status?: number;
@@ -29,6 +30,12 @@ export function errorHandler(
 ): void {
   if (isMalformedJsonError(err)) {
     res.status(400).json({ error: 'Corpo da requisição inválido.' });
+    return;
+  }
+
+  if (err instanceof multer.MulterError) {
+    const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    res.status(status).json({ error: 'Falha no upload: ' + err.message });
     return;
   }
 

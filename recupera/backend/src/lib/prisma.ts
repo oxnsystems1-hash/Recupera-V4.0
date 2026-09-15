@@ -6,7 +6,7 @@ import { requireTenantId } from './tenantContext';
  * introspectar o DMMF em runtime) deixa óbvio, em revisão de código, quais
  * tabelas são tenant-scoped sempre que o schema.prisma muda.
  */
-const TENANT_SCOPED_MODELS = new Set(['Cliente', 'User']);
+const TENANT_SCOPED_MODELS = new Set(['Cliente', 'User', 'Arquivo', 'LogAcessoArquivo']);
 
 const OPERATIONS_WITH_WHERE = new Set([
   'findFirst',
