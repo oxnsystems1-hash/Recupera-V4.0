@@ -9,3 +9,8 @@ import { Prisma } from '@prisma/client';
 export function isRecordNotFoundError(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
 }
+
+/** Violação de índice único (ex.: e-mail já cadastrado no mesmo tenant). */
+export function isUniqueConstraintError(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}

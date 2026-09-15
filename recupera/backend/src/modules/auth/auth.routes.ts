@@ -13,6 +13,7 @@ import {
   verifyPurposeToken,
 } from '../../lib/tokens';
 import { isRateLimited, registerFailedAttempt, resetAttempts } from '../../lib/rateLimiter';
+import { asyncHandler } from '../../lib/asyncHandler';
 
 export const authRouter = Router();
 
@@ -49,16 +50,21 @@ async function issueSession(user: Pick<User, 'id' | 'tenantId' | 'role'>) {
  * primeira vez. Convite/onboarding completo de usuário é fora de escopo
  * do Dia 3 (ver Dia 7 — Telas administrativas).
  */
-authRouter.post('/login', async (req, res) => {
-  const { email, senha } = req.body ?? {};
-  if (typeof email !== 'string' || typeof senha !== 'string') {
+authRouter.post('/login', asyncHandler(async (req, res) => {
+  const { email: emailBruto, senha } = req.body ?? {};
+  if (typeof emailBruto !== 'string' || typeof senha !== 'string') {
     res.status(400).json({ error: 'email e senha são obrigatórios.' });
     return;
   }
+  // E-mail é sempre gravado em minúsculas (ver usuarios.controller.ts e
+  // prisma/seed.ts) — normalizar aqui também torna o login não sensível a
+  // maiúsculas/minúsculas, em vez de falhar silenciosamente por diferença
+  // de caixa entre o que o usuário digitou e o que está no banco.
+  const email = emailBruto.toLowerCase();
 
   // Rate limiting 5 tentativas/15min, por IP e por conta (Prompt 1.3).
   const ipKey = `login:ip:${req.ip}`;
-  const emailKey = `login:email:${email.toLowerCase()}`;
+  const emailKey = `login:email:${email}`;
   if (isRateLimited(ipKey) || isRateLimited(emailKey)) {
     res.status(429).json({ error: 'Muitas tentativas. Tente novamente em alguns minutos.' });
     return;
@@ -89,7 +95,7 @@ authRouter.post('/login', async (req, res) => {
   }
 
   res.json(await issueSession(user));
-});
+}));
 
 /**
  * Gera o segredo TOTP para um Owner/Admin ainda sem MFA habilitado. O
@@ -97,7 +103,7 @@ authRouter.post('/login', async (req, res) => {
  * posse de um código válido — assim ninguém fica "meio autenticado" com um
  * segredo que nunca chegou a validar no autenticador do usuário.
  */
-authRouter.post('/mfa/setup', async (req, res) => {
+authRouter.post('/mfa/setup', asyncHandler(async (req, res) => {
   const { setupToken } = req.body ?? {};
   if (typeof setupToken !== 'string') {
     res.status(400).json({ error: 'setupToken é obrigatório.' });
@@ -125,9 +131,9 @@ authRouter.post('/mfa/setup', async (req, res) => {
   });
 
   res.json({ secret, otpauthUrl: authenticator.keyuri(user.email, 'Recupera', secret) });
-});
+}));
 
-authRouter.post('/mfa/enable', async (req, res) => {
+authRouter.post('/mfa/enable', asyncHandler(async (req, res) => {
   const { setupToken, code } = req.body ?? {};
   if (typeof setupToken !== 'string' || typeof code !== 'string') {
     res.status(400).json({ error: 'setupToken e code são obrigatórios.' });
@@ -168,9 +174,9 @@ authRouter.post('/mfa/enable', async (req, res) => {
   });
 
   res.json(await issueSession(atualizado));
-});
+}));
 
-authRouter.post('/mfa/verify', async (req, res) => {
+authRouter.post('/mfa/verify', asyncHandler(async (req, res) => {
   const { challengeToken, code } = req.body ?? {};
   if (typeof challengeToken !== 'string' || typeof code !== 'string') {
     res.status(400).json({ error: 'challengeToken e code são obrigatórios.' });
@@ -206,10 +212,10 @@ authRouter.post('/mfa/verify', async (req, res) => {
   resetAttempts(rateKey);
 
   res.json(await issueSession(user));
-});
+}));
 
 /** Rotaciona o refresh token a cada uso: o antigo é revogado e um novo é emitido. */
-authRouter.post('/refresh', async (req, res) => {
+authRouter.post('/refresh', asyncHandler(async (req, res) => {
   const { refreshToken } = req.body ?? {};
   if (typeof refreshToken !== 'string') {
     res.status(400).json({ error: 'refreshToken é obrigatório.' });
@@ -237,7 +243,7 @@ authRouter.post('/refresh', async (req, res) => {
   });
 
   res.json(await issueSession(user));
-});
+}));
 
 /**
  * Invalidação real de sessão no logout (Prompt 1.3): revoga o refresh
@@ -246,7 +252,7 @@ authRouter.post('/refresh', async (req, res) => {
  * limitação aceita de JWT stateless; a sessão de longa duração (30d) é
  * quem é de fato encerrada.
  */
-authRouter.post('/logout', async (req, res) => {
+authRouter.post('/logout', asyncHandler(async (req, res) => {
   const { refreshToken } = req.body ?? {};
   if (typeof refreshToken !== 'string') {
     res.status(400).json({ error: 'refreshToken é obrigatório.' });
@@ -259,4 +265,4 @@ authRouter.post('/logout', async (req, res) => {
   });
 
   res.status(204).send();
-});
+}));

@@ -73,3 +73,30 @@ produto exigir revogação imediata.
 
 Resultado do teste obrigatório do Dia 3: ver
 `/docs/resultado-teste-rbac-dia3.md`.
+
+## Robustez geral (revisão pós-Dia 3)
+
+- `src/lib/asyncHandler.ts` + `src/middleware/errorHandler.ts`: Express 4 não
+  encaminha sozinho uma Promise rejeitada de um handler `async` para o
+  middleware de erro — sem isso, uma falha inesperada (ex.: banco fora do
+  ar) virava um `unhandledRejection` capaz de derrubar o processo inteiro,
+  afetando todos os tenants. Toda rota agora passa por `asyncHandler`, e
+  qualquer erro chega ao `errorHandler` central, que nunca vaza stack
+  trace/mensagem interna ao cliente (resposta genérica, log só no
+  servidor). Coberto por `tests/error-handling.test.ts`.
+- Rota desconhecida responde 404 em JSON (não a página HTML padrão do
+  Express); corpo JSON malformado responde 400 em JSON.
+- `helmet()` para cabeçalhos HTTP de segurança padrão; `express.json`
+  limitado a 100kb (sem upload de arquivo ainda — Dia 4 vai rever esse
+  limite para as rotas de upload).
+- E-mail de usuário sempre normalizado para minúsculas na criação e no
+  login — evita falha de login por diferença de caixa e duplicidade tipo
+  `a@x.com` / `A@x.com` no mesmo tenant.
+- `POST /usuarios` exige senha com no mínimo 8 caracteres; e-mail
+  duplicado no mesmo tenant responde 409 (antes vazava como 500 genérico).
+
+Gaps conhecidos, deliberadamente fora do Dia 3 (não é omissão silenciosa):
+CORS ainda não configurado (sem frontend consumindo a API ainda — entra
+junto com a Fase C, Dias 6–7); rate limiter em memória não sobrevive a
+restart nem escala horizontalmente (documentado acima); usuário desativado
+só perde acesso quando o access token expirar.

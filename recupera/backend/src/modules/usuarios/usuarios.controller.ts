@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { usuariosRepository } from './usuarios.repository';
-import { isRecordNotFoundError } from '../../lib/prismaErrors';
+import { isRecordNotFoundError, isUniqueConstraintError } from '../../lib/prismaErrors';
 import { BCRYPT_COST } from '../../config/security';
 
 /**
@@ -9,6 +9,7 @@ import { BCRYPT_COST } from '../../config/security';
  * transferi-lo é uma ação própria do Owner, fora de escopo do Dia 3.
  */
 const ASSIGNABLE_ROLES = new Set(['ADMIN', 'ATENDENTE', 'READ_ONLY']);
+const MIN_PASSWORD_LENGTH = 8;
 
 export async function listUsuarios(_req: Request, res: Response): Promise<void> {
   const usuarios = await usuariosRepository.list();
@@ -16,21 +17,36 @@ export async function listUsuarios(_req: Request, res: Response): Promise<void> 
 }
 
 export async function createUsuario(req: Request, res: Response): Promise<void> {
-  const { email, senha, role } = req.body ?? {};
-  if (typeof email !== 'string' || typeof senha !== 'string' || typeof role !== 'string') {
+  const { email: emailBruto, senha, role } = req.body ?? {};
+  if (typeof emailBruto !== 'string' || typeof senha !== 'string' || typeof role !== 'string') {
     res.status(400).json({ error: 'email, senha e role são obrigatórios.' });
+    return;
+  }
+  if (senha.length < MIN_PASSWORD_LENGTH) {
+    res.status(400).json({ error: `senha deve ter ao menos ${MIN_PASSWORD_LENGTH} caracteres.` });
     return;
   }
   if (!ASSIGNABLE_ROLES.has(role)) {
     res.status(400).json({ error: 'role inválida.' });
     return;
   }
+  // Sempre em minúsculas: mantém o login (auth.routes.ts) não sensível a
+  // maiúsculas/minúsculas e evita duplicidade tipo "a@x.com" / "A@x.com".
+  const email = emailBruto.toLowerCase();
 
   const passwordHash = await bcrypt.hash(senha, BCRYPT_COST);
-  const usuario = await usuariosRepository.create({ email, passwordHash, role });
-  res.status(201).json({
-    usuario: { id: usuario.id, email: usuario.email, role: usuario.role, active: usuario.active },
-  });
+  try {
+    const usuario = await usuariosRepository.create({ email, passwordHash, role });
+    res.status(201).json({
+      usuario: { id: usuario.id, email: usuario.email, role: usuario.role, active: usuario.active },
+    });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      res.status(409).json({ error: 'E-mail já cadastrado neste tenant.' });
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function updateUsuarioRole(req: Request, res: Response): Promise<void> {
