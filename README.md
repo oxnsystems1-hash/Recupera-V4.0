@@ -30,6 +30,8 @@ advocacia, imobiliárias, autoescolas, pet shops, consultorias).
   obrigatório de storage privado e retenção.
 - `/docs/revisao-completa-dias-1-4.md` — revisão linha a linha dos Dias 1–4:
   defeitos encontrados, correções e o que ficou como limitação conhecida.
+- `/docs/resultado-teste-lgpd-dia5.md` — endpoints LGPD (portabilidade,
+  correção, exclusão), auditoria imutável e os defeitos corrigidos na revisão.
 
 ## Regra de ouro
 
@@ -49,4 +51,8 @@ repositório são 100% fictícios.
       assinada de curta duração) e retenção (configurável por tenant,
       piso decidido pelo segmento, exclusão real, bloqueio legal), testados;
       ver `/docs/resultado-teste-storage-dia4.md`.
-- [ ] Dia 5 — Endpoints LGPD (portabilidade, correção, exclusão) e auditoria.
+- [x] Dia 5 — Endpoints LGPD (portabilidade, correção com confirmação do
+      titular, exclusão com aprovação do Owner e prazo legal) e auditoria
+      imutável com retenção de 5 anos garantida pelo banco; ver
+      `/docs/resultado-teste-lgpd-dia5.md`.
+- [ ] Dia 6 — Telas principais (dashboard, agendamento, inbox).

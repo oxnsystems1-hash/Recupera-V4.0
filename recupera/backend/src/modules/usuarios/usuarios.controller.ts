@@ -4,6 +4,7 @@ import { usuariosRepository } from './usuarios.repository';
 import { isRecordNotFoundError, isUniqueConstraintError } from '../../lib/prismaErrors';
 import { BCRYPT_COST } from '../../config/security';
 import { emailValido } from '../../lib/validation';
+import { registrarAuditoria } from '../../lib/auditoria';
 
 /**
  * OWNER nunca é criado/alterado por estas rotas: só existe um por tenant, e
@@ -46,6 +47,12 @@ export async function createUsuario(req: Request, res: Response): Promise<void> 
   const passwordHash = await bcrypt.hash(senha, BCRYPT_COST);
   try {
     const usuario = await usuariosRepository.create({ email, passwordHash, role });
+    await registrarAuditoria({
+      acao: 'USUARIO_CRIADO',
+      entidade: 'User',
+      entidadeId: usuario.id,
+      detalhes: { email: usuario.email, role: usuario.role },
+    });
     res.status(201).json({
       usuario: { id: usuario.id, email: usuario.email, role: usuario.role, active: usuario.active },
     });
@@ -79,6 +86,12 @@ export async function updateUsuarioRole(req: Request, res: Response): Promise<vo
   }
 
   const usuario = await usuariosRepository.updateRole(req.params.id, role);
+  await registrarAuditoria({
+    acao: 'USUARIO_PAPEL_ALTERADO',
+    entidade: 'User',
+    entidadeId: usuario.id,
+    detalhes: { de: alvo.role, para: usuario.role },
+  });
   res.json({ usuario: { id: usuario.id, email: usuario.email, role: usuario.role } });
 }
 
@@ -101,6 +114,12 @@ export async function deactivateUsuario(req: Request, res: Response): Promise<vo
 
   try {
     const usuario = await usuariosRepository.deactivate(req.params.id);
+    await registrarAuditoria({
+      acao: 'USUARIO_DESATIVADO',
+      entidade: 'User',
+      entidadeId: usuario.id,
+      detalhes: { role: alvo.role },
+    });
     res.json({ usuario: { id: usuario.id, active: usuario.active } });
   } catch (error) {
     if (isRecordNotFoundError(error)) {

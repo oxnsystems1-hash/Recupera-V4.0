@@ -31,7 +31,8 @@ let tokenOwnerTenantA: string;
 
 describe('Storage privado e retenção', () => {
   beforeAll(async () => {
-    await prismaUnscoped.logAcessoArquivo.deleteMany();
+    await prismaUnscoped.$executeRawUnsafe('TRUNCATE "logs_auditoria"');
+  await prismaUnscoped.solicitacaoLgpd.deleteMany();
     await prismaUnscoped.arquivo.deleteMany();
     await prismaUnscoped.refreshToken.deleteMany();
     await prismaUnscoped.user.deleteMany();
@@ -85,7 +86,8 @@ describe('Storage privado e retenção', () => {
   });
 
   afterAll(async () => {
-    await prismaUnscoped.logAcessoArquivo.deleteMany();
+    await prismaUnscoped.$executeRawUnsafe('TRUNCATE "logs_auditoria"');
+  await prismaUnscoped.solicitacaoLgpd.deleteMany();
     await prismaUnscoped.arquivo.deleteMany();
     await prismaUnscoped.refreshToken.deleteMany();
     await prismaUnscoped.user.deleteMany();
@@ -151,8 +153,11 @@ describe('Storage privado e retenção', () => {
       expect(download.status).toBe(200);
       expect(download.headers['content-type']).toContain('image/png');
 
-      // Log de geração de URL foi registrado (bullet ACESSO do Prompt 2.1).
-      const log = await prismaUnscoped.logAcessoArquivo.findFirst({ where: { arquivoId } });
+      // Log de geração de URL foi registrado (bullet ACESSO do Prompt 2.1);
+      // desde o Dia 5 ele vive no log de auditoria geral e imutável.
+      const log = await prismaUnscoped.logAuditoria.findFirst({
+        where: { acao: 'ARQUIVO_URL_GERADA', entidadeId: arquivoId },
+      });
       expect(log).not.toBeNull();
     });
 

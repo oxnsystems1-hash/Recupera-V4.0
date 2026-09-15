@@ -6,7 +6,15 @@ import { requireTenantId } from './tenantContext';
  * introspectar o DMMF em runtime) deixa óbvio, em revisão de código, quais
  * tabelas são tenant-scoped sempre que o schema.prisma muda.
  */
-const TENANT_SCOPED_MODELS = new Set(['Cliente', 'User', 'Arquivo', 'LogAcessoArquivo']);
+/**
+ * `LogAuditoria` fica de fora de propósito: parte dos eventos nasce sem
+ * tenant no contexto (login que falhou antes de identificar o tenant,
+ * varredura automática). A escrita passa sempre por lib/auditoria.ts, que
+ * resolve o tenant explicitamente, e a leitura filtra por tenant à mão no
+ * único ponto que lê (painel de auditoria do Owner) — com teste de
+ * regressão provando que um tenant não enxerga o log do outro.
+ */
+const TENANT_SCOPED_MODELS = new Set(['Cliente', 'User', 'Arquivo', 'SolicitacaoLgpd']);
 
 const OPERATIONS_WITH_WHERE = new Set([
   'findFirst',

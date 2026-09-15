@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { clientesRepository } from './clientes.repository';
 import { isRecordNotFoundError } from '../../lib/prismaErrors';
 import { emailValido, textoObrigatorio } from '../../lib/validation';
+import { registrarAuditoria } from '../../lib/auditoria';
 
 /** Teto do termo de busca: um `contains` gigante só serve para pesar no banco. */
 const MAX_BUSCA = 100;
@@ -41,12 +42,23 @@ export async function createCliente(req: Request, res: Response): Promise<void> 
   }
 
   const cliente = await clientesRepository.create({ nome, telefone, email });
+  await registrarAuditoria({
+    acao: 'CLIENTE_CRIADO',
+    entidade: 'Cliente',
+    entidadeId: cliente.id,
+    detalhes: { nome: cliente.nome, email: cliente.email },
+  });
   res.status(201).json({ cliente });
 }
 
 export async function deleteCliente(req: Request, res: Response): Promise<void> {
   try {
     await clientesRepository.remove(req.params.id);
+    await registrarAuditoria({
+      acao: 'CLIENTE_EXCLUIDO',
+      entidade: 'Cliente',
+      entidadeId: req.params.id,
+    });
     res.status(204).send();
   } catch (error) {
     if (isRecordNotFoundError(error)) {

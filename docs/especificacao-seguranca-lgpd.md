@@ -92,7 +92,7 @@ esconder existência entre tenants (regra do Dia 2), não para negar uma ação 
   (UUID + hash do conteúdo), nunca o nome original — path `tenantId/tipo/uuid-hash.ext`.
 - **Acesso**: só por URL assinada (HMAC, `lib/signedUrl.ts`), expiração máxima de 15 min (mais
   curta ainda para segmentos de sensibilidade reforçada). Gerada apenas dentro de uma rota
-  autenticada e autorizada no tenant; cada geração fica registrada (`LogAcessoArquivo`).
+  autenticada e autorizada no tenant; cada geração fica registrada no log de auditoria.
 - **Retenção**: configurável por tenant (`Tenant.retencaoArquivosDias`), mas sempre com piso
   mínimo decidido pelo segmento (nunca abaixo dele). Exclusão é sempre real — bytes removidos do
   storage, não soft delete cosmético. Arquivo com `exclusaoBloqueada = true` (prazo legal, ex.
@@ -101,6 +101,25 @@ esconder existência entre tenants (regra do Dia 2), não para negar uma ação 
 - **Segmento decide automaticamente** a sensibilidade (`padrão` ou `reforçada`) — nunca decisão
   manual caso a caso (`config/segmentos.ts`, mapa fechado dos 8 segmentos da Referência Rápida 1;
   segmento desconhecido cai em `reforçada` por padrão, o lado mais seguro).
+
+## Direitos do titular e auditoria (Dia 5 / Prompt 2.2)
+
+- **Portabilidade** (`POST /lgpd/exportar`): dados cadastrais, histórico e
+  *referências* de arquivo — nunca os bytes nem o caminho interno do storage.
+  Só do tenant de quem pede; prazo de atendimento de 15 dias registrado.
+- **Correção** (`PATCH /lgpd/corrigir` + `POST /lgpd/corrigir/confirmar`): só
+  campos cadastrais (nome, e-mail, telefone, endereço). O dado só muda depois
+  que o titular confirma com token opaco de uso único (hash SHA-256, 48h).
+- **Exclusão** (`DELETE /lgpd/excluir`): exige aprovação do **Owner**. Sem
+  obrigação legal, exclusão real imediata; com obrigação legal
+  (fiscal/contratual), bloqueio com motivo registrado e execução automática
+  quando o prazo vencer — nunca viola a obrigação nem nega o direito.
+- **Auditoria** (`logs_auditoria`): toda ação sensível. Imutabilidade e
+  retenção mínima de 5 anos são impostas por trigger no banco, não pelo
+  código: `UPDATE` sempre recusado, `DELETE` só para linha com mais de 5 anos.
+  Não tem foreign key para `tenants` de propósito — a trilha precisa
+  sobreviver à exclusão do tenant. CPF vira `***.***.***-**`, e-mail vira
+  `j***@gmail.com`, e valores de chaves com senha/token/secret são removidos.
 
 ## Regra de ouro
 

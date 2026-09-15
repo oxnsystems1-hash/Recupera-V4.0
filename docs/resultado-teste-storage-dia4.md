@@ -28,6 +28,8 @@ Ambiente: local (PostgreSQL 16 + filesystem local como storage privado), dados 1
 - Geração só acontece dentro de rota autenticada, com o arquivo resolvido pelo Prisma Client
   escopado por tenant (404 se o arquivo for de outro tenant — nunca 403, mesma regra do Dia 2).
 - Cada geração de URL é registrada em `LogAcessoArquivo` (quem, qual arquivo, até quando valia).
+  *(Atualização do Dia 5: essa tabela foi substituída pelo log de auditoria geral e imutável
+  `logs_auditoria`, com a ação `ARQUIVO_URL_GERADA` — ver `resultado-teste-lgpd-dia5.md`.)*
 
 **Retenção** (`Tenant.retencaoArquivosDias` + `src/config/segmentos.ts` + `src/jobs/retentionSweep.ts`):
 - Retenção configurável por tenant, com piso mínimo decidido automaticamente pelo `segmento`

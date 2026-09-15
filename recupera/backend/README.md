@@ -36,9 +36,15 @@ do SO), e roda a suíte sequencialmente (todos os arquivos compartilham o
 mesmo banco), incluindo os testes obrigatórios de isolamento entre tenants
 (`tests/tenant-isolation.test.ts`), de escalação de privilégio
 (`tests/rbac-privilege-escalation.test.ts`) e de storage/retenção
-(`tests/arquivos-storage.test.ts`), além das suítes de autenticação/MFA/sessão
-(`tests/auth-mfa-sessions.test.ts`) e de utilitários puros
+(`tests/arquivos-storage.test.ts`) e de LGPD/auditoria
+(`tests/lgpd-auditoria.test.ts`), além das suítes de autenticação/MFA/sessão
+(`tests/auth-mfa-sessions.test.ts`), de regressão de segurança
+(`tests/seguranca-regressao.test.ts`) e de utilitários puros
 (`tests/fileSignature.test.ts`, `tests/segmentos.test.ts`).
+
+O banco de teste é preparado com `prisma migrate reset`, não com `db push`:
+`db push` ignora o conteúdo das migrations (triggers, constraints) e a suíte
+passaria sem exercitar garantias que produção aplica de verdade.
 
 ## Isolamento de tenant (Dia 2)
 
@@ -117,7 +123,7 @@ maior que o real, o cliente forja `X-Forwarded-For` e escapa do limite.
   Atendente; Read Only não pode.
 - `GET /arquivos` — lista metadados (não os bytes) dos arquivos do tenant.
 - `GET /arquivos/:id/url` — gera URL assinada de curta duração (máx. 15min,
-  5min para segmentos reforçados); registra o acesso em `LogAcessoArquivo`.
+  5min para segmentos reforçados); registra o acesso no log de auditoria.
 - `GET /arquivos/download?token=...` — único endpoint público do módulo; a
   segurança é a assinatura HMAC + expiração do token, não um JWT.
 - `PATCH /arquivos/:id/bloqueio`, `DELETE /arquivos/:id` — Owner/Admin.
@@ -135,6 +141,29 @@ maior que o real, o cliente forja `X-Forwarded-For` e escapa do limite.
 
 Resultado do teste obrigatório do Dia 4: ver
 `/docs/resultado-teste-storage-dia4.md`.
+
+## LGPD e auditoria (Dia 5)
+
+- `POST /lgpd/exportar` — portabilidade (Owner/Admin).
+- `PATCH /lgpd/corrigir` — propõe correção de campo cadastral e gera token;
+  `POST /lgpd/corrigir/confirmar` é público (o titular não tem sessão) e
+  aplica o dado só com o token válido, de uso único.
+- `DELETE /lgpd/excluir` — abre a solicitação; `POST /lgpd/solicitacoes/:id/aprovar`
+  é exclusivo do Owner e decide entre exclusão imediata e bloqueio por
+  prazo legal.
+- `GET /lgpd/auditoria` — painel do Owner, escopado ao próprio tenant.
+- `src/jobs/lgpdSweep.ts` — executa exclusões cujo prazo legal venceu,
+  revalidando a obrigação antes de apagar.
+- `src/lib/mascarar.ts` / `src/lib/auditoria.ts` — mascaramento de CPF e
+  e-mail e remoção de segredos antes de qualquer gravação no log.
+
+A imutabilidade de `logs_auditoria` é garantida por trigger no banco (ver a
+migration `lgpd_auditoria`), não pelo código — por isso o banco de teste é
+preparado com `prisma migrate reset`, e não com `db push`: `db push` ignora
+o conteúdo das migrations e a suíte passaria sem exercitar a garantia real.
+
+Resultado do teste obrigatório do Dia 5: ver
+`/docs/resultado-teste-lgpd-dia5.md`.
 
 ## Revisão completa dos Dias 1–4
 

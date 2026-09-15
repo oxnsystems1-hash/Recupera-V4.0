@@ -42,7 +42,16 @@ export function requireTenantId(): string {
   return context.tenantId;
 }
 
-/** Igual a getAuthContext(), mas lança em vez de devolver undefined. */
+/**
+ * Contexto quando ele existir, sem lançar. Uso restrito a quem funciona com
+ * ou sem requisição autenticada — hoje só a auditoria, que também registra
+ * eventos de job e de login que falhou.
+ */
+export function getAuthContextOpcional(): RequestAuthContext | undefined {
+  return storage.getStore();
+}
+
+/** Igual a getAuthContextOpcional(), mas lança em vez de devolver undefined. */
 export function requireAuthContext(): RequestAuthContext {
   const context = storage.getStore();
   if (!context) {

@@ -45,7 +45,8 @@ beforeEach(() => {
 });
 
 beforeAll(async () => {
-  await prismaUnscoped.logAcessoArquivo.deleteMany();
+  await prismaUnscoped.$executeRawUnsafe('TRUNCATE "logs_auditoria"');
+  await prismaUnscoped.solicitacaoLgpd.deleteMany();
   await prismaUnscoped.arquivo.deleteMany();
   await prismaUnscoped.cliente.deleteMany();
   await prismaUnscoped.refreshToken.deleteMany();
@@ -90,7 +91,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await prismaUnscoped.logAcessoArquivo.deleteMany();
+  await prismaUnscoped.$executeRawUnsafe('TRUNCATE "logs_auditoria"');
+  await prismaUnscoped.solicitacaoLgpd.deleteMany();
   await prismaUnscoped.arquivo.deleteMany();
   await prismaUnscoped.cliente.deleteMany();
   await prismaUnscoped.refreshToken.deleteMany();

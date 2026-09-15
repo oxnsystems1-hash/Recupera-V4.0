@@ -1,6 +1,7 @@
 import { createApp } from './app';
 import { env } from './config/env';
 import { runRetentionSweep } from './jobs/retentionSweep';
+import { runLgpdSweep } from './jobs/lgpdSweep';
 
 const app = createApp();
 
@@ -19,5 +20,10 @@ const RETENTION_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 setInterval(() => {
   runRetentionSweep().catch((error) => {
     console.error('Falha na varredura de retenção:', error);
+  });
+  // Exclusões LGPD que estavam bloqueadas por prazo legal já vencido
+  // (Dia 5): o direito do titular não depende de alguém lembrar de voltar.
+  runLgpdSweep().catch((error) => {
+    console.error('Falha na varredura de exclusões LGPD:', error);
   });
 }, RETENTION_SWEEP_INTERVAL_MS);

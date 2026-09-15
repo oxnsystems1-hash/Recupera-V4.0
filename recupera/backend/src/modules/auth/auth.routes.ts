@@ -15,6 +15,7 @@ import {
 import { isRateLimited, registerFailedAttempt, resetAttempts } from '../../lib/rateLimiter';
 import { asyncHandler } from '../../lib/asyncHandler';
 import { BCRYPT_COST } from '../../config/security';
+import { registrarAuditoria } from '../../lib/auditoria';
 
 export const authRouter = Router();
 
@@ -89,6 +90,15 @@ async function consumirCodigoTotp(user: User, code: string): Promise<boolean> {
 }
 
 async function issueSession(user: Pick<User, 'id' | 'tenantId' | 'role'>) {
+  await registrarAuditoria({
+    acao: 'LOGIN_SUCESSO',
+    entidade: 'User',
+    entidadeId: user.id,
+    tenantId: user.tenantId,
+    userId: user.id,
+    detalhes: { role: user.role },
+  });
+
   const accessToken = signAccessToken({
     tenantId: user.tenantId,
     userId: user.id,
@@ -140,6 +150,14 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
   if (!user) {
     registerFailedAttempt(ipKey);
     registerFailedAttempt(emailKey);
+    // O e-mail entra mascarado no log (lib/mascarar.ts): a auditoria prova
+    // que houve tentativa, sem virar uma lista de e-mails em texto puro.
+    await registrarAuditoria({
+      acao: 'LOGIN_FALHA',
+      entidade: 'User',
+      detalhes: { email },
+      ip: req.ip,
+    });
     res.status(401).json({ error: 'Credenciais inválidas.' });
     return;
   }
@@ -238,6 +256,15 @@ authRouter.post('/mfa/enable', asyncHandler(async (req, res) => {
     data: { mfaEnabled: true },
   });
 
+  await registrarAuditoria({
+    acao: 'MFA_HABILITADO',
+    entidade: 'User',
+    entidadeId: atualizado.id,
+    tenantId: atualizado.tenantId,
+    userId: atualizado.id,
+    detalhes: { role: atualizado.role },
+  });
+
   res.json(await issueSession(atualizado));
 }));
 
@@ -303,6 +330,15 @@ authRouter.post('/refresh', asyncHandler(async (req, res) => {
       where: { userId: stored.userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    await registrarAuditoria({
+      acao: 'SESSAO_REUSO_DETECTADO',
+      entidade: 'User',
+      entidadeId: stored.userId,
+      tenantId: stored.tenantId,
+      userId: stored.userId,
+      detalhes: { todasAsSessoesRevogadas: true },
+      ip: req.ip,
+    });
     res.status(401).json({ error: 'Sessão inválida ou expirada.' });
     return;
   }
@@ -348,10 +384,25 @@ authRouter.post('/logout', asyncHandler(async (req, res) => {
     return;
   }
 
-  await prismaUnscoped.refreshToken.updateMany({
+  const revogados = await prismaUnscoped.refreshToken.updateMany({
     where: { tokenHash: hashRefreshToken(refreshToken), revokedAt: null },
     data: { revokedAt: new Date() },
   });
+
+  if (revogados.count > 0) {
+    const sessao = await prismaUnscoped.refreshToken.findUnique({
+      where: { tokenHash: hashRefreshToken(refreshToken) },
+      select: { userId: true, tenantId: true },
+    });
+    await registrarAuditoria({
+      acao: 'LOGOUT',
+      entidade: 'User',
+      entidadeId: sessao?.userId,
+      tenantId: sessao?.tenantId,
+      userId: sessao?.userId,
+      ip: req.ip,
+    });
+  }
 
   res.status(204).send();
 }));

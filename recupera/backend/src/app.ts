@@ -7,6 +7,7 @@ import { authRouter } from './modules/auth/auth.routes';
 import { clientesRouter } from './modules/clientes/clientes.routes';
 import { usuariosRouter } from './modules/usuarios/usuarios.routes';
 import { arquivosRouter } from './modules/arquivos/arquivos.routes';
+import { lgpdRouter } from './modules/lgpd/lgpd.routes';
 
 export function createApp(): Express {
   const app = express();
@@ -28,6 +29,7 @@ export function createApp(): Express {
   app.use('/clientes', clientesRouter);
   app.use('/usuarios', usuariosRouter);
   app.use('/arquivos', arquivosRouter);
+  app.use('/lgpd', lgpdRouter);
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Rota não encontrada.' });

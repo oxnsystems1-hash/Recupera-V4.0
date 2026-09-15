@@ -38,10 +38,4 @@ export const arquivosRepository = {
   remove(id: string) {
     return prisma.arquivo.delete({ where: { id } });
   },
-
-  registrarAcesso(arquivoId: string, userId: string, expiresAt: Date) {
-    return prisma.logAcessoArquivo.create({
-      data: { arquivoId, userId, expiresAt } as Prisma.LogAcessoArquivoUncheckedCreateInput,
-    });
-  },
 };

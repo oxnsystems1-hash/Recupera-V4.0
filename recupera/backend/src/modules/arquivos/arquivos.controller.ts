@@ -4,11 +4,12 @@ import multer from 'multer';
 import { arquivosRepository } from './arquivos.repository';
 import { detectMimeType, EXTENSAO_POR_MIME } from '../../lib/fileSignature';
 import { storage } from '../../lib/storage/localFilesystemStorage';
-import { prismaUnscoped } from '../../lib/prisma';
+import { prisma, prismaUnscoped } from '../../lib/prisma';
 import { resolverRetencaoDias, resolverTtlMaximoSegundos } from '../../config/segmentos';
 import { signFileToken, verifyFileToken } from '../../lib/signedUrl';
 import { isRecordNotFoundError } from '../../lib/prismaErrors';
 import { requireAuthContext, requireTenantId } from '../../lib/tenantContext';
+import { registrarAuditoria } from '../../lib/auditoria';
 
 /** Sem upload maior que isto — reduz a superfície de negação de serviço. */
 const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
@@ -47,6 +48,18 @@ export async function uploadArquivo(req: Request, res: Response): Promise<void> 
     return;
   }
 
+  // Vínculo opcional com o titular: é o que permite a portabilidade listar
+  // as referências de arquivo dele e a exclusão LGPD alcançá-las (Dia 5).
+  let clienteId: string | null = null;
+  if (typeof req.body?.clienteId === 'string' && req.body.clienteId.length > 0) {
+    const cliente = await prisma.cliente.findFirst({ where: { id: req.body.clienteId } });
+    if (!cliente) {
+      res.status(404).json({ error: 'Titular não encontrado.' });
+      return;
+    }
+    clienteId = cliente.id;
+  }
+
   const extensao = EXTENSAO_POR_MIME[mimeReal];
   const hash = crypto.createHash('sha256').update(req.file.buffer).digest('hex').slice(0, 16);
   // Nome aleatório (UUID+hash), nunca o nome original — que pode revelar
@@ -62,6 +75,7 @@ export async function uploadArquivo(req: Request, res: Response): Promise<void> 
   try {
     const arquivo = await arquivosRepository.create({
       tenantId,
+      clienteId,
       tipo,
       nomeOriginal: req.file.originalname.slice(0, 255),
       mimeType: mimeReal,
@@ -69,6 +83,14 @@ export async function uploadArquivo(req: Request, res: Response): Promise<void> 
       storagePath,
       retentionUntil,
     });
+
+    await registrarAuditoria({
+      acao: 'ARQUIVO_ENVIADO',
+      entidade: 'Arquivo',
+      entidadeId: arquivo.id,
+      detalhes: { tipo, mimeType: mimeReal, tamanhoBytes: arquivo.tamanhoBytes, clienteId },
+    });
+
     res.status(201).json({
       arquivo: {
         id: arquivo.id,
@@ -103,9 +125,16 @@ export async function gerarUrlArquivo(req: Request, res: Response): Promise<void
   const { token, expiresAt } = signFileToken(arquivo.id, ttlMaximo);
 
   // Log de cada geração de URL (Prompt 2.1, bullet ACESSO) — quem gerou,
-  // para qual arquivo, e até quando o link valia.
+  // para qual arquivo, e até quando o link valia. Desde o Dia 5 isso vai
+  // para o log de auditoria geral, imutável (lib/auditoria.ts).
   const auth = requireAuthContext();
-  await arquivosRepository.registrarAcesso(arquivo.id, auth.userId, new Date(expiresAt * 1000));
+  await registrarAuditoria({
+    acao: 'ARQUIVO_URL_GERADA',
+    entidade: 'Arquivo',
+    entidadeId: arquivo.id,
+    userId: auth.userId,
+    detalhes: { expiraEm: new Date(expiresAt * 1000).toISOString() },
+  });
 
   res.json({ url: `/arquivos/download?token=${token}`, expiresAt });
 }
@@ -170,6 +199,14 @@ export async function updateBloqueioExclusao(req: Request, res: Response): Promi
     bloqueado,
     bloqueado ? motivo : null,
   );
+
+  await registrarAuditoria({
+    acao: 'ARQUIVO_BLOQUEIO_ALTERADO',
+    entidade: 'Arquivo',
+    entidadeId: atualizado.id,
+    detalhes: { bloqueado, motivo: bloqueado ? motivo : null },
+  });
+
   res.json({
     arquivo: {
       id: atualizado.id,
@@ -208,6 +245,13 @@ export async function deleteArquivo(req: Request, res: Response): Promise<void> 
     }
     throw error;
   }
+
+  await registrarAuditoria({
+    acao: 'ARQUIVO_EXCLUIDO',
+    entidade: 'Arquivo',
+    entidadeId: arquivo.id,
+    detalhes: { tipo: arquivo.tipo, clienteId: arquivo.clienteId },
+  });
 
   res.status(204).send();
 }

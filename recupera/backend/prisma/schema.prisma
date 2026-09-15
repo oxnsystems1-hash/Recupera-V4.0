@@ -37,7 +37,7 @@ model Tenant {
   clientes          Cliente[]
   refreshTokens     RefreshToken[]
   arquivos          Arquivo[]
-  logsAcessoArquivo LogAcessoArquivo[]
+  solicitacoesLgpd  SolicitacaoLgpd[]
 
   @@map("tenants")
 }
@@ -102,10 +102,15 @@ model Cliente {
   nome      String
   telefone  String
   email     String?
+  // Campo cadastral corrigível pelo titular (Dia 5 / Prompt 2.2). Genérico
+  // em qualquer segmento — endereço não é campo de setor único.
+  endereco  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  arquivos         Arquivo[]
+  solicitacoesLgpd SolicitacaoLgpd[]
 
   @@index([tenantId])
   @@map("clientes")
@@ -119,6 +124,10 @@ model Cliente {
 model Arquivo {
   id                     String    @id @default(uuid())
   tenantId               String
+  // Titular a que o arquivo pertence, quando houver. É o que permite a
+  // portabilidade listar "referências de arquivo do titular" e a exclusão
+  // LGPD alcançar os arquivos da pessoa (Dia 5 / Prompt 2.2).
+  clienteId              String?
   tipo                   String
   nomeOriginal           String
   mimeType               String
@@ -136,26 +145,97 @@ model Arquivo {
   motivoBloqueioExclusao String?
   createdAt              DateTime  @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
+  @@index([clienteId])
   @@map("arquivos")
 }
 
-// Log de cada geração de URL assinada (bullet "ACESSO" do Prompt 2.1) —
-// tabela só-insert, embrião do log de auditoria completo que o Dia 5
-// generaliza para toda ação sensível do sistema.
-model LogAcessoArquivo {
-  id        String   @id @default(uuid())
-  tenantId  String
-  arquivoId String
-  userId    String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+/// Log de auditoria de toda ação sensível (Dia 5 / Prompt 2.2). Generaliza
+/// o antigo LogAcessoArquivo do Dia 4.
+///
+/// Imutabilidade e retenção mínima de 5 anos NÃO dependem do código da
+/// aplicação: a migration instala um trigger que recusa qualquer UPDATE e
+/// só permite DELETE de linha com mais de 5 anos. Assim a garantia vale
+/// também para quem chegar no banco por fora do backend.
+///
+/// `detalhes` nunca recebe senha/token/secret em texto puro, e CPF/e-mail
+/// entram mascarados — ver lib/mascarar.ts e lib/auditoria.ts.
+model LogAuditoria {
+  id         String   @id @default(uuid())
+  /// Nulo apenas em evento anterior à identificação do tenant (ex.: login
+  /// que falhou antes de saber a qual tenant a tentativa pertencia).
+  ///
+  /// Sem foreign key para `tenants` de propósito: o log precisa sobreviver
+  /// à exclusão do tenant — é justamente quando a trilha mais importa. Uma
+  /// FK obrigaria a apagar (cascade) ou a atualizar (set null) a linha, e
+  /// os dois são proibidos numa tabela append-only com retenção de 5 anos.
+  tenantId   String?
+  userId     String?
+  acao       String
+  entidade   String
+  entidadeId String?
+  detalhes   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@index([tenantId, createdAt])
+  @@index([entidade, entidadeId])
+  @@map("logs_auditoria")
+}
+
+enum TipoSolicitacaoLgpd {
+  EXPORTACAO
+  CORRECAO
+  EXCLUSAO
+}
+
+enum StatusSolicitacaoLgpd {
+  PENDENTE
+  AGUARDANDO_CONFIRMACAO
+  BLOQUEADA
+  CONCLUIDA
+  REJEITADA
+}
+
+/// Solicitações dos direitos do titular (Dia 5 / Prompt 2.2). Existe para
+/// que portabilidade, correção e exclusão sejam rastreáveis: quem pediu,
+/// quem aprovou, qual o prazo legal e por que uma exclusão ficou bloqueada.
+model SolicitacaoLgpd {
+  id        String                @id @default(uuid())
+  tenantId  String
+  clienteId String
+  tipo      TipoSolicitacaoLgpd
+  status    StatusSolicitacaoLgpd @default(PENDENTE)
+
+  solicitadoPorId String
+  aprovadoPorId   String?
+  aprovadoEm      DateTime?
+
+  /// Prazo de atendimento do direito do titular (15 dias, Prompt 2.2).
+  prazoAtendimento DateTime
+
+  /// CORREÇÃO: campos cadastrais propostos, aplicados só após o titular
+  /// confirmar com o token. O token é guardado apenas como hash SHA-256.
+  correcaoProposta      Json?
+  tokenConfirmacaoHash  String?   @unique
+  tokenConfirmacaoAteEm DateTime?
+
+  /// EXCLUSÃO bloqueada por obrigação legal (fiscal/contratual): motivo
+  /// registrado e data em que a exclusão passa a ser executada sozinha.
+  motivoBloqueio String?
+  bloqueadoAteEm DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
-  @@index([arquivoId])
-  @@map("logs_acesso_arquivo")
+  @@index([clienteId])
+  @@index([status, bloqueadoAteEm])
+  @@map("solicitacoes_lgpd")
 }
