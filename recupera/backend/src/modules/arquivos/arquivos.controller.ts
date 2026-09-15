@@ -8,7 +8,7 @@ import { prismaUnscoped } from '../../lib/prisma';
 import { resolverRetencaoDias, resolverTtlMaximoSegundos } from '../../config/segmentos';
 import { signFileToken, verifyFileToken } from '../../lib/signedUrl';
 import { isRecordNotFoundError } from '../../lib/prismaErrors';
-import { getAuthContext, requireTenantId } from '../../lib/tenantContext';
+import { requireAuthContext, requireTenantId } from '../../lib/tenantContext';
 
 /** Sem upload maior que isto — reduz a superfície de negação de serviço. */
 const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
@@ -104,8 +104,8 @@ export async function gerarUrlArquivo(req: Request, res: Response): Promise<void
 
   // Log de cada geração de URL (Prompt 2.1, bullet ACESSO) — quem gerou,
   // para qual arquivo, e até quando o link valia.
-  const auth = getAuthContext();
-  await arquivosRepository.registrarAcesso(arquivo.id, auth!.userId, new Date(expiresAt * 1000));
+  const auth = requireAuthContext();
+  await arquivosRepository.registrarAcesso(arquivo.id, auth.userId, new Date(expiresAt * 1000));
 
   res.json({ url: `/arquivos/download?token=${token}`, expiresAt });
 }
@@ -129,8 +129,21 @@ export async function downloadArquivo(req: Request, res: Response): Promise<void
     return;
   }
 
-  const buffer = await storage.read(arquivo.storagePath);
+  let buffer: Buffer;
+  try {
+    buffer = await storage.read(arquivo.storagePath);
+  } catch {
+    // Registro existe mas os bytes não (ex.: exclusão parcial interrompida).
+    // 404 é a resposta honesta — melhor que um 500 opaco.
+    res.status(404).json({ error: 'Arquivo não encontrado.' });
+    return;
+  }
+
   res.setHeader('Content-Type', arquivo.mimeType);
+  // Defesa em profundidade para o conteúdo servido: nunca deixar o browser
+  // adivinhar o tipo, e isolar o arquivo de qualquer origem/script.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
   res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(arquivo.nomeOriginal)}"`);
   res.send(buffer);
 }
@@ -180,6 +193,12 @@ export async function deleteArquivo(req: Request, res: Response): Promise<void> 
     return;
   }
 
+  // Exclusão real, não soft delete cosmético: os bytes saem do storage.
+  // Bytes primeiro, registro depois: se o delete do registro falhar, a
+  // varredura de retenção reencontra a linha e termina o serviço. Na ordem
+  // inversa, os bytes ficariam órfãos, sem nenhum registro que os aponte.
+  await storage.delete(arquivo.storagePath);
+
   try {
     await arquivosRepository.remove(req.params.id);
   } catch (error) {
@@ -190,7 +209,5 @@ export async function deleteArquivo(req: Request, res: Response): Promise<void> 
     throw error;
   }
 
-  // Exclusão real, não soft delete cosmético: os bytes saem do storage.
-  await storage.delete(arquivo.storagePath);
   res.status(204).send();
 }

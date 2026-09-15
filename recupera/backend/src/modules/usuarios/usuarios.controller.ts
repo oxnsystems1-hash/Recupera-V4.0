@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { usuariosRepository } from './usuarios.repository';
 import { isRecordNotFoundError, isUniqueConstraintError } from '../../lib/prismaErrors';
 import { BCRYPT_COST } from '../../config/security';
+import { emailValido } from '../../lib/validation';
 
 /**
  * OWNER nunca é criado/alterado por estas rotas: só existe um por tenant, e
@@ -10,6 +11,8 @@ import { BCRYPT_COST } from '../../config/security';
  */
 const ASSIGNABLE_ROLES = new Set(['ADMIN', 'ATENDENTE', 'READ_ONLY']);
 const MIN_PASSWORD_LENGTH = 8;
+/** bcrypt ignora bytes além de 72 — aceitar mais dá falsa sensação de força. */
+const MAX_PASSWORD_LENGTH = 72;
 
 export async function listUsuarios(_req: Request, res: Response): Promise<void> {
   const usuarios = await usuariosRepository.list();
@@ -18,21 +21,27 @@ export async function listUsuarios(_req: Request, res: Response): Promise<void> 
 
 export async function createUsuario(req: Request, res: Response): Promise<void> {
   const { email: emailBruto, senha, role } = req.body ?? {};
-  if (typeof emailBruto !== 'string' || typeof senha !== 'string' || typeof role !== 'string') {
+  if (typeof senha !== 'string' || typeof role !== 'string') {
     res.status(400).json({ error: 'email, senha e role são obrigatórios.' });
     return;
   }
-  if (senha.length < MIN_PASSWORD_LENGTH) {
-    res.status(400).json({ error: `senha deve ter ao menos ${MIN_PASSWORD_LENGTH} caracteres.` });
+  // emailValido já normaliza para minúsculas: mantém o login não sensível a
+  // maiúsculas/minúsculas e evita duplicidade tipo "a@x.com" / "A@x.com".
+  const email = emailValido(emailBruto);
+  if (!email) {
+    res.status(400).json({ error: 'email inválido.' });
+    return;
+  }
+  if (senha.length < MIN_PASSWORD_LENGTH || senha.length > MAX_PASSWORD_LENGTH) {
+    res.status(400).json({
+      error: `senha deve ter entre ${MIN_PASSWORD_LENGTH} e ${MAX_PASSWORD_LENGTH} caracteres.`,
+    });
     return;
   }
   if (!ASSIGNABLE_ROLES.has(role)) {
     res.status(400).json({ error: 'role inválida.' });
     return;
   }
-  // Sempre em minúsculas: mantém o login (auth.routes.ts) não sensível a
-  // maiúsculas/minúsculas e evita duplicidade tipo "a@x.com" / "A@x.com".
-  const email = emailBruto.toLowerCase();
 
   const passwordHash = await bcrypt.hash(senha, BCRYPT_COST);
   try {
@@ -81,6 +90,12 @@ export async function deactivateUsuario(req: Request, res: Response): Promise<vo
   }
   if (alvo.role === 'OWNER') {
     res.status(403).json({ error: 'Não é possível desativar o Owner por esta rota.' });
+    return;
+  }
+  if (alvo.id === req.auth?.userId) {
+    // Um Admin se desativando se tranca para fora sem ninguém para
+    // reverter — se a intenção for sair, o caminho é o logout.
+    res.status(400).json({ error: 'Não é possível desativar a própria conta.' });
     return;
   }
 

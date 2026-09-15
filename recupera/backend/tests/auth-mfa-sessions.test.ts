@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { authenticator } from 'otplib';
@@ -88,11 +88,23 @@ describe('MFA obrigatório para Owner/Admin', () => {
       .send({ challengeToken, code: '000001' });
     expect(verifyFalho.status).toBe(401);
 
-    const verify = await request(app)
-      .post('/auth/mfa/verify')
-      .send({ challengeToken, code: authenticator.generate(secret) });
-    expect(verify.status).toBe(200);
-    expect(typeof verify.body.accessToken).toBe('string');
+    // Avança para a próxima janela TOTP: o código usado no /mfa/enable não
+    // pode ser aceito de novo (proteção contra replay, RFC 6238 §5.2), e o
+    // usuário real também só teria um código novo depois de 30s.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(Date.now() + 60_000));
+      const codigoNovaJanela = authenticator.generate(secret);
+      expect(codigoNovaJanela).not.toBe(codigoValido);
+
+      const verify = await request(app)
+        .post('/auth/mfa/verify')
+        .send({ challengeToken, code: codigoNovaJanela });
+      expect(verify.status).toBe(200);
+      expect(typeof verify.body.accessToken).toBe('string');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('Atendente não precisa de MFA — login concede sessão direto', async () => {

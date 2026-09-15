@@ -16,17 +16,37 @@ import { storage } from '../lib/storage/localFilesystemStorage';
  * suficiente para o MVP; um scheduler externo com monitoramento real é
  * decisão de infraestrutura do Dia 14, fora de escopo do Dia 4.
  */
+/** Teto por execução: evita carregar um lote gigante na memória de uma vez. */
+const MAX_POR_EXECUCAO = 500;
+
 export async function runRetentionSweep(
   referenceDate: Date = new Date(),
-): Promise<{ removidos: number }> {
+): Promise<{ removidos: number; falhas: number }> {
   const vencidos = await prismaUnscoped.arquivo.findMany({
     where: { retentionUntil: { lt: referenceDate }, exclusaoBloqueada: false },
+    orderBy: { retentionUntil: 'asc' },
+    take: MAX_POR_EXECUCAO,
   });
 
+  let removidos = 0;
+  let falhas = 0;
+
   for (const arquivo of vencidos) {
-    await storage.delete(arquivo.storagePath);
-    await prismaUnscoped.arquivo.delete({ where: { id: arquivo.id } });
+    try {
+      // Bytes primeiro: se a remoção do registro falhar depois, o arquivo
+      // volta na próxima varredura (delete de storage é idempotente). A
+      // ordem inversa deixaria bytes órfãos que ninguém mais encontra.
+      await storage.delete(arquivo.storagePath);
+      await prismaUnscoped.arquivo.delete({ where: { id: arquivo.id } });
+      removidos += 1;
+    } catch (error) {
+      // Um arquivo problemático não pode abortar a varredura inteira — os
+      // outros vencidos precisam sair mesmo assim (LGPD não espera o
+      // próximo deploy).
+      falhas += 1;
+      console.error(`Falha ao excluir arquivo ${arquivo.id} na varredura de retenção:`, error);
+    }
   }
 
-  return { removidos: vencidos.length };
+  return { removidos, falhas };
 }

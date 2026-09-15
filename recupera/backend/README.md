@@ -106,6 +106,11 @@ junto com a Fase C, Dias 6–7); rate limiter em memória não sobrevive a
 restart nem escala horizontalmente (documentado acima); usuário desativado
 só perde acesso quando o access token expirar.
 
+`TRUST_PROXY` precisa refletir quantos proxies existem de fato na frente da
+aplicação: com 0 atrás de um load balancer, todos os clientes compartilham o
+IP do proxy e o rate limiting por IP vira um balde único; com um número
+maior que o real, o cliente forja `X-Forwarded-For` e escapa do limite.
+
 ## Storage privado e retenção (Dia 4)
 
 - `POST /arquivos` (multipart, campo `arquivo` + `tipo`) — Owner/Admin/
@@ -130,3 +135,15 @@ só perde acesso quando o access token expirar.
 
 Resultado do teste obrigatório do Dia 4: ver
 `/docs/resultado-teste-storage-dia4.md`.
+
+## Revisão completa dos Dias 1–4
+
+`tests/seguranca-regressao.test.ts` guarda um teste para cada defeito
+encontrado na revisão linha a linha do código dos Dias 1–4 — entre eles um
+vazamento real entre tenants (contexto com `tenant_id` indefinido fazia o
+Prisma descartar o filtro), a extensão de isolamento que falhava aberta em
+operação desconhecida, enumeração de usuários por tempo de resposta no
+login, reuso de refresh token sem reação e replay de código TOTP.
+
+A lista completa, com o que foi corrigido e o que ficou como limitação
+conhecida, está em `/docs/revisao-completa-dias-1-4.md`.

@@ -55,6 +55,10 @@ model User {
   // (AES-256-GCM) antes de chegar ao banco.
   mfaSecret    String?
   mfaEnabled   Boolean  @default(false)
+  // Última janela TOTP aceita (epoch / 30s). O RFC 6238 exige que o mesmo
+  // código nunca seja aceito duas vezes: sem isto, um código interceptado
+  // vale por toda a janela de 30s e pode ser replayado.
+  mfaUltimaJanela Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

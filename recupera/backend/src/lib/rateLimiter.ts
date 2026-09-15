@@ -12,12 +12,36 @@ interface Bucket {
   windowStart: number;
 }
 
+/**
+ * Teto de chaves em memória. Sem ele, tentativas de login com e-mails
+ * aleatórios criariam uma chave nova por tentativa e o Map cresceria sem
+ * limite — exaustão de memória a partir de um endpoint público.
+ */
+const MAX_BUCKETS = 50_000;
+
 const buckets = new Map<string, Bucket>();
+
+function purgeExpired(now: number): void {
+  for (const [key, bucket] of buckets) {
+    if (now - bucket.windowStart > WINDOW_MS) {
+      buckets.delete(key);
+    }
+  }
+}
 
 export function registerFailedAttempt(key: string): void {
   const now = Date.now();
   const bucket = buckets.get(key);
   if (!bucket || now - bucket.windowStart > WINDOW_MS) {
+    if (buckets.size >= MAX_BUCKETS) {
+      purgeExpired(now);
+      if (buckets.size >= MAX_BUCKETS) {
+        // Ainda cheio só de janelas ativas: descarta a chave mais antiga
+        // (inserção é ordenada no Map) em vez de crescer indefinidamente.
+        const maisAntiga = buckets.keys().next();
+        if (!maisAntiga.done) buckets.delete(maisAntiga.value);
+      }
+    }
     buckets.set(key, { count: 1, windowStart: now });
     return;
   }

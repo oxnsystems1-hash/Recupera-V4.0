@@ -25,7 +25,12 @@ export function encryptSecret(plaintext: string): string {
 }
 
 export function decryptSecret(payload: string): string {
-  const [ivHex, authTagHex, encryptedHex] = payload.split('.');
+  const partes = payload.split('.');
+  if (partes.length !== 3) {
+    throw new Error('Payload criptografado em formato inválido.');
+  }
+  const [ivHex, authTagHex, encryptedHex] = partes;
+
   const decipher = crypto.createDecipheriv(ALGORITHM, getKey(), Buffer.from(ivHex, 'hex'));
   decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
   const decrypted = Buffer.concat([

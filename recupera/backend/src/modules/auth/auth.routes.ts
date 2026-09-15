@@ -14,6 +14,7 @@ import {
 } from '../../lib/tokens';
 import { isRateLimited, registerFailedAttempt, resetAttempts } from '../../lib/rateLimiter';
 import { asyncHandler } from '../../lib/asyncHandler';
+import { BCRYPT_COST } from '../../config/security';
 
 export const authRouter = Router();
 
@@ -22,6 +23,70 @@ export const authRouter = Router();
  * com acesso a ações sensíveis/administrativas na matriz RBAC.
  */
 const MFA_REQUIRED_ROLES = new Set<User['role']>(['OWNER', 'ADMIN']);
+
+/**
+ * Hash descartável, de custo idêntico ao real, comparado quando o e-mail
+ * não existe. Sem isso, "e-mail inexistente" responde muito mais rápido que
+ * "senha errada" — um canal de enumeração de usuários por tempo de resposta.
+ */
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('senha-inexistente-para-timing', BCRYPT_COST);
+
+/**
+ * O schema permite o mesmo e-mail em tenants diferentes (@@unique é
+ * [tenantId, email]). Um `findFirst` simples escolheria um tenant
+ * arbitrário — o usuário poderia cair no tenant errado. Aqui todas as
+ * contas com aquele e-mail são consideradas e a senha é quem desempata;
+ * o `take` limita o custo (cada comparação bcrypt é cara de propósito).
+ */
+async function autenticarPorEmailESenha(email: string, senha: string): Promise<User | null> {
+  const candidatos = await prismaUnscoped.user.findMany({
+    where: { email, active: true },
+    orderBy: { createdAt: 'asc' },
+    take: 5,
+  });
+
+  let autenticado: User | null = null;
+  for (const candidato of candidatos) {
+    if (await bcrypt.compare(senha, candidato.passwordHash)) {
+      autenticado = candidato;
+      break;
+    }
+  }
+
+  if (candidatos.length === 0) {
+    // Mantém o custo de tempo parecido com o de uma conta existente.
+    await bcrypt.compare(senha, DUMMY_PASSWORD_HASH);
+  }
+
+  return autenticado;
+}
+
+const TOTP_STEP_SEGUNDOS = 30;
+
+/**
+ * Consome um código TOTP: valida e garante que aquela janela de 30s nunca
+ * seja aceita de novo para o mesmo usuário (RFC 6238 §5.2). Sem isso, um
+ * código interceptado continua válido pelo resto da janela.
+ */
+async function consumirCodigoTotp(user: User, code: string): Promise<boolean> {
+  if (!user.mfaSecret || !authenticator.check(code, decryptSecret(user.mfaSecret))) {
+    return false;
+  }
+
+  const janelaAtual = Math.floor(Date.now() / 1000 / TOTP_STEP_SEGUNDOS);
+  if (user.mfaUltimaJanela !== null && janelaAtual <= user.mfaUltimaJanela) {
+    return false;
+  }
+
+  // updateMany condicional: se duas requisições chegarem com o mesmo código
+  // ao mesmo tempo, só a primeira encontra a janela anterior e passa.
+  const consumido = await prismaUnscoped.user.updateMany({
+    where: { id: user.id, mfaUltimaJanela: user.mfaUltimaJanela },
+    data: { mfaUltimaJanela: janelaAtual },
+  });
+
+  return consumido.count === 1;
+}
 
 async function issueSession(user: Pick<User, 'id' | 'tenantId' | 'role'>) {
   const accessToken = signAccessToken({
@@ -70,17 +135,18 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
     return;
   }
 
-  const user = await prismaUnscoped.user.findFirst({ where: { email } });
-  const senhaValida = user ? await bcrypt.compare(senha, user.passwordHash) : false;
+  const user = await autenticarPorEmailESenha(email, senha);
 
-  if (!user || !user.active || !senhaValida) {
+  if (!user) {
     registerFailedAttempt(ipKey);
     registerFailedAttempt(emailKey);
     res.status(401).json({ error: 'Credenciais inválidas.' });
     return;
   }
 
-  resetAttempts(ipKey);
+  // Só o contador da conta é zerado no sucesso. Zerar também o do IP
+  // deixaria um atacante com uma conta válida limpar o próprio orçamento de
+  // tentativas entre rodadas de força bruta contra outras contas.
   resetAttempts(emailKey);
 
   if (MFA_REQUIRED_ROLES.has(user.role)) {
@@ -118,7 +184,7 @@ authRouter.post('/mfa/setup', asyncHandler(async (req, res) => {
     return;
   }
 
-  const user = await prismaUnscoped.user.findFirst({ where: { id: userId } });
+  const user = await prismaUnscoped.user.findFirst({ where: { id: userId, active: true } });
   if (!user || user.mfaEnabled) {
     res.status(400).json({ error: 'MFA já configurado ou usuário inválido.' });
     return;
@@ -154,14 +220,13 @@ authRouter.post('/mfa/enable', asyncHandler(async (req, res) => {
     return;
   }
 
-  const user = await prismaUnscoped.user.findFirst({ where: { id: userId } });
+  const user = await prismaUnscoped.user.findFirst({ where: { id: userId, active: true } });
   if (!user?.mfaSecret) {
     res.status(400).json({ error: 'Configuração de MFA não iniciada.' });
     return;
   }
 
-  const valido = authenticator.check(code, decryptSecret(user.mfaSecret));
-  if (!valido) {
+  if (!(await consumirCodigoTotp(user, code))) {
     registerFailedAttempt(rateKey);
     res.status(401).json({ error: 'Código inválido.' });
     return;
@@ -197,14 +262,13 @@ authRouter.post('/mfa/verify', asyncHandler(async (req, res) => {
     return;
   }
 
-  const user = await prismaUnscoped.user.findFirst({ where: { id: userId } });
+  const user = await prismaUnscoped.user.findFirst({ where: { id: userId, active: true } });
   if (!user?.mfaEnabled || !user.mfaSecret) {
     res.status(400).json({ error: 'MFA não habilitado para este usuário.' });
     return;
   }
 
-  const valido = authenticator.check(code, decryptSecret(user.mfaSecret));
-  if (!valido) {
+  if (!(await consumirCodigoTotp(user, code))) {
     registerFailedAttempt(rateKey);
     res.status(401).json({ error: 'Código inválido.' });
     return;
@@ -226,7 +290,24 @@ authRouter.post('/refresh', asyncHandler(async (req, res) => {
     where: { tokenHash: hashRefreshToken(refreshToken) },
   });
 
-  if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+  if (!stored) {
+    res.status(401).json({ error: 'Sessão inválida ou expirada.' });
+    return;
+  }
+
+  if (stored.revokedAt) {
+    // Reuso de um token já rotacionado: ou o token vazou, ou uma cópia
+    // antiga está sendo replayada. Não dá para distinguir, então tratamos
+    // como comprometimento e derrubamos todas as sessões do usuário.
+    await prismaUnscoped.refreshToken.updateMany({
+      where: { userId: stored.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    res.status(401).json({ error: 'Sessão inválida ou expirada.' });
+    return;
+  }
+
+  if (stored.expiresAt < new Date()) {
     res.status(401).json({ error: 'Sessão inválida ou expirada.' });
     return;
   }
@@ -237,10 +318,18 @@ authRouter.post('/refresh', asyncHandler(async (req, res) => {
     return;
   }
 
-  await prismaUnscoped.refreshToken.update({
-    where: { id: stored.id },
+  // Revogação condicional (compare-and-swap): se duas requisições chegarem
+  // com o mesmo refresh token ao mesmo tempo, só uma encontra revokedAt
+  // null e emite sessão — a outra recebe 401 em vez de gerar uma segunda
+  // sessão válida a partir do mesmo token.
+  const rotacionado = await prismaUnscoped.refreshToken.updateMany({
+    where: { id: stored.id, revokedAt: null },
     data: { revokedAt: new Date() },
   });
+  if (rotacionado.count !== 1) {
+    res.status(401).json({ error: 'Sessão inválida ou expirada.' });
+    return;
+  }
 
   res.json(await issueSession(user));
 }));

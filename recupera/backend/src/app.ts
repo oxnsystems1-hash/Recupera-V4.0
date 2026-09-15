@@ -1,5 +1,6 @@
 import express, { Express } from 'express';
 import helmet from 'helmet';
+import { env } from './config/env';
 import { stripSpoofedTenantId } from './middleware/stripSpoofedTenantId';
 import { errorHandler } from './middleware/errorHandler';
 import { authRouter } from './modules/auth/auth.routes';
@@ -9,6 +10,11 @@ import { arquivosRouter } from './modules/arquivos/arquivos.routes';
 
 export function createApp(): Express {
   const app = express();
+
+  // req.ip é a chave do rate limiting por IP: sem isto, atrás de um proxy
+  // todos os clientes viram o mesmo IP. Configurado por env, nunca "true"
+  // cego (que deixaria o cliente forjar X-Forwarded-For).
+  app.set('trust proxy', env.trustProxy);
 
   app.use(helmet());
   // Limite baixo para corpo JSON — reduz a superfície de payload de negação

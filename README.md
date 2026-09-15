@@ -28,6 +28,8 @@ advocacia, imobiliárias, autoescolas, pet shops, consultorias).
   obrigatório de escalação de privilégio (RBAC).
 - `/docs/resultado-teste-storage-dia4.md` — resultado documentado do teste
   obrigatório de storage privado e retenção.
+- `/docs/revisao-completa-dias-1-4.md` — revisão linha a linha dos Dias 1–4:
+  defeitos encontrados, correções e o que ficou como limitação conhecida.
 
 ## Regra de ouro
 

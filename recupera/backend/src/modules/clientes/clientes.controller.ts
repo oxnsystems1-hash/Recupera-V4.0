@@ -1,10 +1,14 @@
 import { Request, Response } from 'express';
 import { clientesRepository } from './clientes.repository';
 import { isRecordNotFoundError } from '../../lib/prismaErrors';
+import { emailValido, textoObrigatorio } from '../../lib/validation';
+
+/** Teto do termo de busca: um `contains` gigante só serve para pesar no banco. */
+const MAX_BUSCA = 100;
 
 export async function listClientes(req: Request, res: Response): Promise<void> {
-  const q = typeof req.query.q === 'string' ? req.query.q : undefined;
-  const clientes = await clientesRepository.list(q);
+  const q = typeof req.query.q === 'string' ? req.query.q.slice(0, MAX_BUSCA).trim() : undefined;
+  const clientes = await clientesRepository.list(q || undefined);
   res.json({ clientes });
 }
 
@@ -19,11 +23,23 @@ export async function getCliente(req: Request, res: Response): Promise<void> {
 }
 
 export async function createCliente(req: Request, res: Response): Promise<void> {
-  const { nome, telefone, email } = req.body ?? {};
-  if (typeof nome !== 'string' || typeof telefone !== 'string') {
-    res.status(400).json({ error: 'nome e telefone são obrigatórios.' });
+  const { nome: nomeBruto, telefone: telefoneBruto, email: emailBruto } = req.body ?? {};
+
+  const nome = textoObrigatorio(nomeBruto);
+  const telefone = textoObrigatorio(telefoneBruto, 30);
+  if (!nome || !telefone) {
+    res.status(400).json({ error: 'nome e telefone são obrigatórios (texto, dentro do limite).' });
     return;
   }
+
+  const email = emailBruto === undefined || emailBruto === null || emailBruto === ''
+    ? undefined
+    : emailValido(emailBruto);
+  if (email === null) {
+    res.status(400).json({ error: 'email inválido.' });
+    return;
+  }
+
   const cliente = await clientesRepository.create({ nome, telefone, email });
   res.status(201).json({ cliente });
 }

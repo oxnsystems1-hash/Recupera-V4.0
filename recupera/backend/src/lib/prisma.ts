@@ -17,9 +17,15 @@ const OPERATIONS_WITH_WHERE = new Set([
   'groupBy',
   'update',
   'updateMany',
+  'updateManyAndReturn',
   'delete',
   'deleteMany',
 ]);
+
+const OPERATIONS_WITH_DATA = new Set(['create', 'createMany', 'createManyAndReturn']);
+
+/** findUnique não aceita filtro extra confiável no `where` — ver comentário abaixo. */
+const OPERATIONS_BLOQUEADAS = new Set(['findUnique', 'findUniqueOrThrow']);
 
 /**
  * Client Prisma "cru": sem isolamento automático de tenant. Uso restrito a
@@ -49,7 +55,7 @@ export const prisma = prismaUnscoped.$extends({
         const tenantId = requireTenantId();
         const mutableArgs = args as Record<string, unknown>;
 
-        if (operation === 'findUnique' || operation === 'findUniqueOrThrow') {
+        if (OPERATIONS_BLOQUEADAS.has(operation)) {
           // findUnique só aceita campos únicos no `where`: não dá para
           // injetar tenant_id ali sem risco de, por engano, ignorá-lo.
           // Em vez de arriscar um vazamento silencioso entre tenants,
@@ -62,25 +68,25 @@ export const prisma = prismaUnscoped.$extends({
 
         if (OPERATIONS_WITH_WHERE.has(operation)) {
           mutableArgs.where = { ...(mutableArgs.where as object | undefined), tenantId };
-        }
-
-        if (operation === 'upsert') {
+        } else if (operation === 'upsert') {
           mutableArgs.where = { ...(mutableArgs.where as object | undefined), tenantId };
           mutableArgs.create = { ...(mutableArgs.create as object | undefined), tenantId };
           mutableArgs.update = { ...(mutableArgs.update as object | undefined), tenantId };
-        }
-
-        if (operation === 'create') {
+        } else if (OPERATIONS_WITH_DATA.has(operation)) {
           // tenantId por último no spread: sobrescreve qualquer valor que
           // eventualmente tenha vazado de input externo para `data`.
-          mutableArgs.data = { ...(mutableArgs.data as object | undefined), tenantId };
-        }
-
-        if (operation === 'createMany' && Array.isArray(mutableArgs.data)) {
-          mutableArgs.data = (mutableArgs.data as Record<string, unknown>[]).map((item) => ({
-            ...item,
-            tenantId,
-          }));
+          mutableArgs.data = Array.isArray(mutableArgs.data)
+            ? (mutableArgs.data as Record<string, unknown>[]).map((item) => ({ ...item, tenantId }))
+            : { ...(mutableArgs.data as object | undefined), tenantId };
+        } else {
+          // Fail-closed: uma operação que esta extensão não sabe escopar
+          // (nova versão do Prisma, por exemplo) precisa explodir, nunca
+          // passar direto sem filtro de tenant. Deixar passar seria um
+          // vazamento silencioso entre tenants.
+          throw new Error(
+            `Operação "${operation}" não suportada pelo isolamento de tenant no model "${model}" — ` +
+              'adicione o tratamento em lib/prisma.ts antes de usá-la.',
+          );
         }
 
         return query(args);
