@@ -2,14 +2,35 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
 
 export const clientesRepository = {
-  list(q?: string) {
+  /**
+   * `resumo` devolve só id + nome.
+   *
+   * Existe porque a tela de agenda precisa preencher um `<select>` de
+   * clientes — e puxar o cadastro inteiro (telefone, e-mail, endereço de
+   * todo mundo) para desenhar uma lista de nomes é expor dado pessoal sem
+   * finalidade (LGPD art. 6º, III: necessidade). O dado que não sai do
+   * banco não vaza no navegador, no cache nem no log de proxy.
+   */
+  list(q?: string, resumo = false) {
     return prisma.cliente.findMany({
       where: q
         ? {
             OR: [{ nome: { contains: q, mode: 'insensitive' } }, { telefone: { contains: q } }],
           }
         : undefined,
-      orderBy: { createdAt: 'desc' },
+      select: resumo
+        ? { id: true, nome: true }
+        : {
+            id: true,
+            tenantId: true,
+            nome: true,
+            telefone: true,
+            email: true,
+            endereco: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+      orderBy: resumo ? { nome: 'asc' } : { createdAt: 'desc' },
     });
   },
 

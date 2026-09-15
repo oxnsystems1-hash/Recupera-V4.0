@@ -20,47 +20,52 @@ enum Role {
 }
 
 model Tenant {
-  id        String   @id @default(uuid())
-  nome      String
+  id                   String   @id @default(uuid())
+  nome                 String
   // Resolve dinamicamente a sensibilidade de dado e o comportamento do
   // agente de IA. Nunca criar tabela separada por setor nem coluna fixa
   // (ex.: "prontuario") — ver Referência Rápida 1 do Guia Mestre.
-  segmento  String
+  segmento             String
   // Retenção de arquivos configurável por tenant (Dia 4 / Prompt 2.1) — mas
   // sempre com piso mínimo decidido pelo `segmento` (config/segmentos.ts),
   // nunca abaixo do que a sensibilidade do segmento exige.
   retencaoArquivosDias Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  users             User[]
-  clientes          Cliente[]
-  refreshTokens     RefreshToken[]
-  arquivos          Arquivo[]
-  solicitacoesLgpd  SolicitacaoLgpd[]
+  users            User[]
+  clientes         Cliente[]
+  refreshTokens    RefreshToken[]
+  arquivos         Arquivo[]
+  solicitacoesLgpd SolicitacaoLgpd[]
+  profissionais    Profissional[]
+  servicos         Servico[]
+  agendamentos     Agendamento[]
+  conversas        Conversa[]
+  mensagens        Mensagem[]
 
   @@map("tenants")
 }
 
 model User {
-  id           String   @id @default(uuid())
-  tenantId     String
-  email        String
-  passwordHash String
-  role         Role     @default(ATENDENTE)
+  id              String   @id @default(uuid())
+  tenantId        String
+  email           String
+  passwordHash    String
+  role            Role     @default(ATENDENTE)
   // Desativação lógica (Dia 3): usuário inativo não consegue mais logar.
-  active       Boolean  @default(true)
+  active          Boolean  @default(true)
   // MFA/TOTP — obrigatório para OWNER e ADMIN (ver Prompt 1.3). O segredo
   // nunca é gravado em texto puro: sempre passa por lib/crypto.ts
   // (AES-256-GCM) antes de chegar ao banco.
-  mfaSecret    String?
-  mfaEnabled   Boolean  @default(false)
+  mfaSecret       String?
+  mfaEnabled      Boolean  @default(false)
   // Última janela TOTP aceita (epoch / 30s). O RFC 6238 exige que o mesmo
   // código nunca seja aceito duas vezes: sem isto, um código interceptado
   // vale por toda a janela de 30s e pode ser replayado.
   mfaUltimaJanela Int?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   refreshTokens RefreshToken[]
@@ -111,6 +116,8 @@ model Cliente {
   tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   arquivos         Arquivo[]
   solicitacoesLgpd SolicitacaoLgpd[]
+  agendamentos     Agendamento[]
+  conversas        Conversa[]
 
   @@index([tenantId])
   @@map("clientes")
@@ -122,7 +129,7 @@ model Cliente {
 // genérica livre (ex.: "documento", "comprovante") — nunca nome de setor
 // fixo, mesma regra do núcleo do produto.
 model Arquivo {
-  id                     String    @id @default(uuid())
+  id                     String   @id @default(uuid())
   tenantId               String
   // Titular a que o arquivo pertence, quando houver. É o que permite a
   // portabilidade listar "referências de arquivo do titular" e a exclusão
@@ -134,16 +141,16 @@ model Arquivo {
   tamanhoBytes           Int
   // Path relativo dentro do storage privado: tenantId/tipo/uuid-hash.ext —
   // nunca o nome original do arquivo (pode revelar informação sensível).
-  storagePath            String    @unique
+  storagePath            String   @unique
   // Calculado no upload a partir de config/segmentos.ts (retenção padrão do
   // segmento do tenant, ou a configurada em Tenant.retencaoArquivosDias,
   // nunca abaixo do piso mínimo do segmento).
   retentionUntil         DateTime
   // Prazo legal (ex.: fiscal) — enquanto true, nem a exclusão manual nem a
   // varredura automática de retenção apagam o arquivo.
-  exclusaoBloqueada      Boolean   @default(false)
+  exclusaoBloqueada      Boolean  @default(false)
   motivoBloqueioExclusao String?
-  createdAt              DateTime  @default(now())
+  createdAt              DateTime @default(now())
 
   tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   cliente Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
@@ -238,4 +245,140 @@ model SolicitacaoLgpd {
   @@index([clienteId])
   @@index([status, bloqueadoAteEm])
   @@map("solicitacoes_lgpd")
+}
+
+// ---------------------------------------------------------------------------
+// FASE C — Módulo 3 (Dia 6). Entidades que as telas principais consomem.
+// Nenhuma delas tem campo de setor fixo: `Servico.categoria` é texto livre do
+// próprio tenant (é o "segmento de serviço" usado como filtro na agenda), e
+// não se confunde com `Tenant.segmento`, que resolve sensibilidade de dado.
+// ---------------------------------------------------------------------------
+
+model Profissional {
+  id        String   @id @default(uuid())
+  tenantId  String
+  nome      String
+  ativo     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agendamentos Agendamento[]
+
+  @@index([tenantId])
+  @@map("profissionais")
+}
+
+model Servico {
+  id             String   @id @default(uuid())
+  tenantId       String
+  nome           String
+  /// Categoria do próprio tenant (ex.: "estetica", "consulta"). Filtro da
+  /// agenda — texto livre, nunca uma lista fixa de setor.
+  categoria      String
+  duracaoMinutos Int
+  ativo          Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agendamentos Agendamento[]
+
+  @@index([tenantId])
+  @@map("servicos")
+}
+
+enum StatusAgendamento {
+  AGENDADO
+  CONFIRMADO
+  CONCLUIDO
+  CANCELADO
+}
+
+model Agendamento {
+  id                 String            @id @default(uuid())
+  tenantId           String
+  clienteId          String
+  profissionalId     String
+  servicoId          String
+  inicioEm           DateTime
+  fimEm              DateTime
+  status             StatusAgendamento @default(AGENDADO)
+  observacao         String?
+  motivoCancelamento String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente      Cliente      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  profissional Profissional @relation(fields: [profissionalId], references: [id], onDelete: Restrict)
+  servico      Servico      @relation(fields: [servicoId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, inicioEm])
+  @@index([clienteId])
+  @@index([profissionalId, inicioEm])
+  @@map("agendamentos")
+}
+
+enum CanalConversa {
+  WHATSAPP
+  MANUAL
+}
+
+model Conversa {
+  id               String        @id @default(uuid())
+  tenantId         String
+  clienteId        String
+  canal            CanalConversa @default(WHATSAPP)
+  naoLidas         Int           @default(0)
+  ultimaMensagemEm DateTime      @default(now())
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cliente   Cliente    @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  mensagens Mensagem[]
+
+  @@index([tenantId, ultimaMensagemEm])
+  @@index([clienteId])
+  @@map("conversas")
+}
+
+enum AutorMensagem {
+  CLIENTE
+  ATENDENTE
+  AGENTE_IA
+}
+
+enum StatusMensagem {
+  /// Recebida do cliente.
+  RECEBIDA
+  /// Enviada ao cliente — para AGENTE_IA, só chega aqui por ação humana.
+  ENVIADA
+  /// Sugestão do agente de IA: exibida na tela, nunca enviada sozinha.
+  SUGERIDA
+  /// Sugestão recusada por quem atende.
+  DESCARTADA
+}
+
+model Mensagem {
+  id           String         @id @default(uuid())
+  tenantId     String
+  conversaId   String
+  autor        AutorMensagem
+  conteudo     String
+  status       StatusMensagem
+  /// Quem aprovou o envio de uma sugestão do agente. Nulo em mensagem
+  /// recebida e em sugestão ainda não decidida — é a prova de que nenhuma
+  /// sugestão de IA foi enviada sem decisão humana (Prompt 3.1).
+  enviadaPorId String?
+  enviadaEm    DateTime?
+  createdAt    DateTime       @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversa Conversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([conversaId, createdAt])
+  @@map("mensagens")
 }

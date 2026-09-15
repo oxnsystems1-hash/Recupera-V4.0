@@ -62,5 +62,14 @@ export const env = {
    * escapa do rate limiting. Ver README do backend.
    */
   trustProxy: Number(process.env.TRUST_PROXY ?? 0),
+  /**
+   * Origens autorizadas a chamar a API pelo navegador (Fase C). Allowlist
+   * explícita, nunca `*`: com credenciais em jogo, `*` transformaria
+   * qualquer site aberto pelo usuário em cliente da API.
+   */
+  corsOrigens: (process.env.CORS_ORIGENS ?? 'http://localhost:5173')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean),
   port: Number(process.env.PORT ?? 3000),
 };

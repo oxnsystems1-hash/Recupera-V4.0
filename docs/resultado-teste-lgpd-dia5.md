@@ -13,9 +13,11 @@ bytes nem o caminho interno do storage) e as solicitações LGPD dele, sempre
 restrito ao tenant de quem pede (titular de outro tenant → 404, nunca 403).
 Prazo de 15 dias registrado na solicitação.
 
-`agendamentos` e `conversas` saem como listas vazias de propósito: essas
-entidades ainda não existem no backend (Fases C e D). O formato do pacote já
-as contempla para não mudar quando chegarem.
+`agendamentos` e `conversas` saíam como listas vazias porque essas entidades
+ainda não existiam no backend. **Atualizado no Dia 6:** elas passaram a
+existir e a exportação já as devolve de verdade, com uma exceção deliberada —
+sugestões do agente de IA ainda não decididas ficam fora, porque nunca foram
+comunicadas ao titular. Ver `/docs/resultado-teste-telas-dia6.md`.
 
 ### Correção — `PATCH /lgpd/corrigir` + `POST /lgpd/corrigir/confirmar`
 Só campos cadastrais (`nome`, `email`, `telefone`, `endereco`); qualquer outro

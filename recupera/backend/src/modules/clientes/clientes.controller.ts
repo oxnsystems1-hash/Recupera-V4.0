@@ -9,7 +9,9 @@ const MAX_BUSCA = 100;
 
 export async function listClientes(req: Request, res: Response): Promise<void> {
   const q = typeof req.query.q === 'string' ? req.query.q.slice(0, MAX_BUSCA).trim() : undefined;
-  const clientes = await clientesRepository.list(q || undefined);
+  // `?resumo=1`: id + nome, para quem só precisa montar um seletor.
+  const resumo = req.query.resumo === '1' || req.query.resumo === 'true';
+  const clientes = await clientesRepository.list(q || undefined, resumo);
   res.json({ clientes });
 }
 

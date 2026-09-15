@@ -14,7 +14,17 @@ import { requireTenantId } from './tenantContext';
  * único ponto que lê (painel de auditoria do Owner) — com teste de
  * regressão provando que um tenant não enxerga o log do outro.
  */
-const TENANT_SCOPED_MODELS = new Set(['Cliente', 'User', 'Arquivo', 'SolicitacaoLgpd']);
+const TENANT_SCOPED_MODELS = new Set([
+  'Cliente',
+  'User',
+  'Arquivo',
+  'SolicitacaoLgpd',
+  'Profissional',
+  'Servico',
+  'Agendamento',
+  'Conversa',
+  'Mensagem',
+]);
 
 const OPERATIONS_WITH_WHERE = new Set([
   'findFirst',

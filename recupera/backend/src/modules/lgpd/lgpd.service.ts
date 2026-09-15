@@ -26,7 +26,7 @@ export function prazoAtendimento(de: Date = new Date()): Date {
  * pende dele passa pelo Prisma Client escopado.
  */
 export async function montarExportacao(cliente: Cliente) {
-  const [arquivos, solicitacoes] = await Promise.all([
+  const [arquivos, solicitacoes, agendamentos, conversas] = await Promise.all([
     prisma.arquivo.findMany({
       where: { clienteId: cliente.id },
       select: {
@@ -45,6 +45,35 @@ export async function montarExportacao(cliente: Cliente) {
       select: { id: true, tipo: true, status: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
     }),
+    prisma.agendamento.findMany({
+      where: { clienteId: cliente.id },
+      select: {
+        id: true,
+        inicioEm: true,
+        fimEm: true,
+        status: true,
+        observacao: true,
+        profissional: { select: { nome: true } },
+        servico: { select: { nome: true } },
+      },
+      orderBy: { inicioEm: 'asc' },
+    }),
+    prisma.conversa.findMany({
+      where: { clienteId: cliente.id },
+      select: {
+        id: true,
+        canal: true,
+        createdAt: true,
+        mensagens: {
+          // Sugestão não decidida nunca foi comunicada ao titular: não faz
+          // parte do histórico dele.
+          where: { status: { in: ['RECEBIDA', 'ENVIADA'] } },
+          select: { autor: true, conteudo: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
   ]);
 
   return {
@@ -61,11 +90,10 @@ export async function montarExportacao(cliente: Cliente) {
     // pede o arquivo em si pelo canal autenticado, se quiser.
     arquivos,
     solicitacoesLgpd: solicitacoes,
-    // Agendamentos e conversas ainda não existem como entidade no backend
-    // (Fases C e D do guia). Os campos vêm vazios de propósito, para que o
-    // formato do pacote não mude quando essas entidades chegarem.
-    agendamentos: [] as unknown[],
-    conversas: [] as unknown[],
+    // Entidades criadas no Dia 6: o pacote do titular passou a incluí-las
+    // de fato, como o Prompt 2.2 exige ("histórico de agendamento/conversas").
+    agendamentos,
+    conversas,
   };
 }
 
@@ -112,7 +140,7 @@ export async function obrigacaoLegalPendente(
 export async function executarExclusaoDoTitular(
   clienteId: string,
   client: ClientePrisma = prismaUnscoped,
-): Promise<{ arquivosRemovidos: number }> {
+): Promise<{ arquivosRemovidos: number; agendamentosRemovidos: number; conversasRemovidas: number }> {
   const arquivos = await client.arquivo.findMany({
     where: { clienteId },
     select: { id: true, storagePath: true },
@@ -137,6 +165,15 @@ export async function executarExclusaoDoTitular(
     }
   }
 
+  // Agendamentos e conversas do titular saem junto (cascade no schema), mas
+  // as mensagens dependem da conversa — o cascade de Conversa→Mensagem
+  // resolve. O count aqui é só para a trilha de auditoria saber o tamanho do
+  // que foi apagado.
+  const [agendamentosRemovidos, conversasRemovidas] = await Promise.all([
+    client.agendamento.count({ where: { clienteId } }),
+    client.conversa.count({ where: { clienteId } }),
+  ]);
+
   // Os registros de arquivo saem explicitamente: a relação com Cliente é
   // SetNull (um arquivo pode existir sem titular), então apagar o cliente
   // deixaria linhas órfãs — com nome original, datas e ponteiro para bytes
@@ -146,7 +183,7 @@ export async function executarExclusaoDoTitular(
   // SolicitacaoLgpd cai por cascade junto com o cliente (ver schema).
   await client.cliente.delete({ where: { id: clienteId } });
 
-  return { arquivosRemovidos };
+  return { arquivosRemovidos, agendamentosRemovidos, conversasRemovidas };
 }
 
 /** Campos cadastrais que o titular pode corrigir — e só eles (Prompt 2.2). */

@@ -11,7 +11,7 @@ advocacia, imobiliárias, autoescolas, pet shops, consultorias).
 
 ```
 /recupera/backend   Backend (Node.js + TypeScript + Express + Prisma + PostgreSQL)
-/frontend           Frontend (a implementar — Fase C, Dias 6–7)
+/frontend           Frontend (React + TypeScript + Vite — Fase C)
 /ai-agent           Agente de IA comercial (a implementar — Fase E, Dias 10–11)
 /automations        Automations / integrações (WhatsApp, agenda externa — Fases D e I)
 /docs               Documentação normativa e de referência
@@ -32,6 +32,9 @@ advocacia, imobiliárias, autoescolas, pet shops, consultorias).
   defeitos encontrados, correções e o que ficou como limitação conhecida.
 - `/docs/resultado-teste-lgpd-dia5.md` — endpoints LGPD (portabilidade,
   correção, exclusão), auditoria imutável e os defeitos corrigidos na revisão.
+- `/docs/resultado-teste-telas-dia6.md` — as três telas principais, a
+  auditoria completa do que foi gerado (25 falhas listadas por severidade) e
+  a revalidação independente de cada correção.
 
 ## Regra de ouro
 
@@ -55,4 +58,7 @@ repositório são 100% fictícios.
       titular, exclusão com aprovação do Owner e prazo legal) e auditoria
       imutável com retenção de 5 anos garantida pelo banco; ver
       `/docs/resultado-teste-lgpd-dia5.md`.
-- [ ] Dia 6 — Telas principais (dashboard, agendamento, inbox).
+- [x] Dia 6 — Telas principais (dashboard, agendamento, inbox) integradas ao
+      backend real, com as entidades de agenda e conversa, prevenção de
+      double-booking garantida pelo banco e sugestão de IA que nunca é
+      enviada sem decisão humana; ver `/docs/resultado-teste-telas-dia6.md`.

@@ -1,0 +1,153 @@
+/*
+ * Sistema de Cores UI/UX — Referência Rápida 5 do Guia Mestre v4.
+ * Distribuição 60–30–10: base, estrutura, destaques.
+ *
+ * O Dourado #D4AF37 do Manual de Marca NÃO aparece aqui de propósito: dentro
+ * do produto quem manda é o Marsala. Dourado fica restrito a favicon, ícone
+ * de notificação e avatar do agente no WhatsApp (marketing/marca).
+ */
+:root {
+  --base: #fdfdfb;          /* 60% — fundos, cards, áreas de leitura */
+  --base-alt: #f4f2ec;      /* variação de respiro sobre a base */
+  --estrutura: #0f2747;     /* 25% — sidebar, navegação, títulos */
+  --estrutura-clara: #1c3a63;
+  --neutro: #d1d5db;        /* ~5% — bordas, divisores, desabilitado */
+  --neutro-texto: #5b6572;  /* texto secundário com contraste AA sobre --base */
+  --marsala: #722f37;       /* ~5% — CTA principal, ícone ativo */
+  --marsala-escuro: #5c262c;
+  --oliva: #6b8e6b;         /* ~3% — sucesso, status online */
+  --oliva-escuro: #4f6b4f;  /* usado em texto sobre base (AA) */
+  --azul-vivo: #2e6bff;     /* ~2% — bordas e realces decorativos */
+  /* Branco sobre #2e6bff dá 4,46:1 — reprova em AA (mínimo 4,5:1). Todo
+     fundo azul COM TEXTO usa este tom, que dá 6,7:1. */
+  --azul-vivo-escuro: #1d4fd1;
+
+  --texto: #1b2733;
+
+  /*
+   * Tipografia: a Referência Rápida 5 fixa piso de 14px. Com raiz de 16px,
+   * 0.875rem = 14px exatos — este é o MENOR tamanho que pode aparecer na
+   * interface. Antes a raiz era 15px e havia texto em 0.75rem (11,25px) e
+   * 0.85rem (12,75px): abaixo do piso, em vários pontos das três telas.
+   */
+  --fs-secundario: 0.875rem;
+
+  --raio: 10px;
+  --sombra: 0 1px 2px rgba(15, 39, 71, 0.06), 0 8px 24px -12px rgba(15, 39, 71, 0.18);
+  --foco: 0 0 0 3px rgba(46, 107, 255, 0.45);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--base);
+  color: var(--texto);
+  font-family: Poppins, system-ui, -apple-system, sans-serif;
+  /* Raiz de 16px para que --fs-secundario (0.875rem) bata exatamente nos
+     14px mínimos exigidos pela Referência Rápida 5. */
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+h1, h2, h3 { color: var(--estrutura); margin: 0 0 8px; line-height: 1.25; }
+h1 { font-size: 1.5rem; font-weight: 600; }
+h2 { font-size: 1.15rem; font-weight: 600; }
+h3 { font-size: 1rem; font-weight: 600; }
+
+a { color: var(--azul-vivo-escuro); }
+
+/* Foco sempre visível: navegação por teclado é requisito de acessibilidade,
+   não enfeite. Nunca usar outline:none sem substituto. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--foco);
+  border-radius: 6px;
+}
+
+.visualmente-oculto {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/*
+ * Link de pular navegação: fica fora da tela até receber foco, e AÍ aparece.
+ * Escondido também no foco ele seria inútil para quem enxerga e navega por
+ * teclado — a pessoa "sai" do lugar sem nenhuma pista visual (WCAG 2.4.7).
+ */
+.link-pular {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 10;
+  background: var(--base);
+  color: var(--estrutura);
+  border: 1px solid var(--estrutura);
+  border-radius: 0 0 var(--raio) 0;
+  padding: 10px 16px;
+  font-weight: 600;
+}
+.link-pular:focus {
+  left: 0;
+}
+
+/*
+ * Layout responsivo tablet/desktop. Estilo inline não faz media query — por
+ * isso as grades que precisam colapsar moram aqui, não no componente.
+ */
+.grade-inbox {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  align-items: start;
+}
+
+.grade-metricas {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.grade-formulario {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  align-items: end;
+}
+
+/* Item de grade tem `min-width: auto` por padrão: um <input type="datetime-local">
+   tem largura intrínseca grande e, sem isto, estoura a coluna e passa por
+   cima do campo vizinho (visto ao renderizar a tela de verdade). */
+.grade-formulario > * {
+  min-width: 0;
+}
+
+.grade-formulario select,
+.grade-formulario input {
+  width: 100%;
+  /* O próprio <label> é uma grade; sem zerar o mínimo aqui também, a largura
+     intrínseca do campo de data vence o width:100% e vaza para fora. */
+  min-width: 0;
+}
+
+/* Tabela larga em tela estreita rola dentro do próprio cartão, em vez de
+   empurrar a página inteira para o lado. */
+.rolagem-horizontal {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 900px) {
+  .grade-inbox {
+    grid-template-columns: 1fr;
+  }
+}
