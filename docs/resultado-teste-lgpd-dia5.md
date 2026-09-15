@@ -62,12 +62,13 @@ $ npm test
  ✓ tests/auth-mfa-sessions.test.ts (4 tests)
  ✓ tests/tenant-isolation.test.ts (7 tests)
  ✓ tests/rbac-privilege-escalation.test.ts (6 tests)
+ ✓ tests/lgpd-aprovacao-falha.test.ts (1 test)
  ✓ tests/error-handling.test.ts (4 tests)
  ✓ tests/segmentos.test.ts (6 tests)
  ✓ tests/fileSignature.test.ts (4 tests)
 
- Test Files  9 passed (9)
-      Tests  83 passed (83)
+ Test Files  10 passed (10)
+      Tests  84 passed (84)
 ```
 
 Rodado duas vezes, mesmo resultado (sem flakiness). `tsc --noEmit` e
